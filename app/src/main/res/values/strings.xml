@@ -1,0 +1,30 @@
+<resources>
+    <string name="app_name">Firebattle</string>
+    <string name="brand_title">FIREBATTLE ESPORTS</string>
+    <string name="mode_player">Player App</string>
+    <string name="mode_admin">Admin Panel</string>
+    <string name="sign_in_title">Enter the Firebattle Arena</string>
+    <string name="sign_in_subtitle">Join Free Fire MAX &amp; BGMI tournaments, manage your wallet, and unlock live room credentials.</string>
+    <string name="sign_in_google">Sign in with Google</string>
+    <string name="profile_setup_title">Complete Player Profile</string>
+    <string name="profile_setup_subtitle">Set your In-Game Name, Game UID, and 10-digit mobile number to join matches.</string>
+    <string name="save_profile">Save Player Profile</string>
+    <string name="tab_tournaments">Tournaments</string>
+    <string name="tab_wallet">Wallet</string>
+    <string name="tab_requests">My Requests</string>
+    <string name="admin_tab_matches">Matches</string>
+    <string name="admin_tab_deposits">Deposits</string>
+    <string name="admin_tab_withdrawals">Withdrawals</string>
+    <string name="admin_tab_players">Players</string>
+    <string name="admin_tab_settings">Settings</string>
+    <string name="wallet_balance_label">Wallet Balance</string>
+    <string name="logout">Logout</string>
+    <string name="room_credentials">Room Credentials</string>
+    <string name="room_locked_hint">Room ID &amp; Password appear here after you join this match.</string>
+    <string name="add_money_title">Add Money (UPI Deposit)</string>
+    <string name="withdraw_title">Withdraw Winnings</string>
+    <string name="submit_deposit">Submit Deposit Request</string>
+    <string name="request_withdrawal">Request Withdrawal</string>
+    <string name="publish_match">PUBLISH MATCH LIVE</string>
+    <string name="save_settings">SAVE SETTINGS TO FIRESTORE</string>
+</resources>

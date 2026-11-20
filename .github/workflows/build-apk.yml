@@ -1,0 +1,58 @@
+name: Build & Publish Firebattle APK
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Set up Gradle 9.3.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Prepare debug keystore
+        run: |
+          if [ -f debug.keystore.base64 ]; then
+            base64 -d debug.keystore.base64 > debug.keystore
+          else
+            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+      - name: Build Debug APK
+        run: gradle :app:assembleDebug --no-daemon
+
+      - name: Rename APK for direct download
+        run: cp app/build/outputs/apk/debug/app-debug.apk Firebattle.apk
+
+      - name: Upload Firebattle APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Firebattle-Debug-APK
+          path: Firebattle.apk
+          if-no-files-found: error
+
+      - name: Publish Direct Download Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Firebattle Esports APK (Latest)
+          body: Direct APK download for Firebattle Esports Player & Admin Android App.
+          files: Firebattle.apk
+          overwrite_files: true
+          make_latest: true

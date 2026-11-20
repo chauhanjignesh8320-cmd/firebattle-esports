@@ -1,0 +1,253 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        (request.auth.token.email_verified == true && request.auth.token.email == 'chauhanjignesh8320@gmail.com') ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isValidSettings(data) {
+      return data.upiId is string && data.upiId.size() >= 3 && data.upiId.size() <= 80 &&
+             data.upiName is string && data.upiName.size() >= 2 && data.upiName.size() <= 60 &&
+             data.adminPhone is string && data.adminPhone.matches('^[0-9]{10}$');
+    }
+
+    function isValidUserProfile(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.email is string && data.email.size() <= 120 &&
+             data.ign is string && data.ign.size() >= 2 && data.ign.size() <= 30 &&
+             data.gameUid is string && data.gameUid.size() >= 3 && data.gameUid.size() <= 30 &&
+             data.phone is string && data.phone.matches('^[0-9]{10}$') &&
+             data.wallet is int && data.wallet >= 0 && data.wallet <= 10000000;
+    }
+
+    function isValidMatch(data) {
+      return data.title is string && data.title.size() >= 2 && data.title.size() <= 80 &&
+             (data.game == 'Free Fire MAX' || data.game == 'BGMI') &&
+             data.matchTime is string && data.matchTime.size() >= 2 && data.matchTime.size() <= 50 &&
+             data.mapName is string && data.mapName.size() >= 2 && data.mapName.size() <= 40 &&
+             data.entry is int && data.entry >= 0 && data.entry <= 100000 &&
+             data.perKill is int && data.perKill >= 0 && data.perKill <= 100000 &&
+             data.prize is int && data.prize >= 0 && data.prize <= 10000000 &&
+             data.slots is int && data.slots >= 2 && data.slots <= 200 &&
+             data.joinedCount is int && data.joinedCount >= 0 && data.joinedCount <= data.slots &&
+             data.roomId is string && data.roomId.size() <= 40 &&
+             data.roomPass is string && data.roomPass.size() <= 40 &&
+             (data.status == 'LIVE' || data.status == 'COMPLETED') &&
+             data.createdBy is string && data.createdBy.size() >= 1 && data.createdBy.size() <= 128;
+    }
+
+    function isValidRegistration(data) {
+      return data.matchId is string && isValidId(data.matchId) &&
+             data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.ign is string && data.ign.size() >= 2 && data.ign.size() <= 30 &&
+             data.gameUid is string && data.gameUid.size() >= 3 && data.gameUid.size() <= 30 &&
+             data.phone is string && data.phone.matches('^[0-9]{10}$') &&
+             data.entryPaid is int && data.entryPaid >= 0 && data.entryPaid <= 100000;
+    }
+
+    function isValidDeposit(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.phone is string && data.phone.matches('^[0-9]{10}$') &&
+             data.ign is string && data.ign.size() >= 2 && data.ign.size() <= 30 &&
+             data.amount is int && data.amount >= 1 && data.amount <= 100000 &&
+             data.utr is string && data.utr.size() >= 6 && data.utr.size() <= 32 &&
+             (data.status == 'Pending' || data.status == 'Approved' || data.status == 'Rejected');
+    }
+
+    function isValidWithdrawal(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.phone is string && data.phone.matches('^[0-9]{10}$') &&
+             data.ign is string && data.ign.size() >= 2 && data.ign.size() <= 30 &&
+             data.amount is int && data.amount >= 1 && data.amount <= 100000 &&
+             data.upiId is string && data.upiId.size() >= 3 && data.upiId.size() <= 80 &&
+             (data.status == 'Pending' || data.status == 'Paid' || data.status == 'Rejected');
+    }
+
+    match /admins/{adminUid} {
+      allow get: if isSignedIn() && isValidId(adminUid) && request.auth.uid == adminUid;
+      allow list, create, update, delete: if false;
+    }
+
+    match /settings/{settingId} {
+      allow get: if isSignedIn() && settingId == 'app';
+      allow list: if false;
+      allow create: if isAdmin() &&
+                       settingId == 'app' &&
+                       incoming().keys().hasAll(['upiId', 'upiName', 'adminPhone', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['upiId', 'upiName', 'adminPhone', 'updatedAt']) &&
+                       isValidSettings(incoming()) &&
+                       incoming().updatedAt is timestamp &&
+                       incoming().updatedAt <= request.time;
+      allow update: if isAdmin() &&
+                       settingId == 'app' &&
+                       isValidSettings(incoming()) &&
+                       incoming().updatedAt is timestamp &&
+                       incoming().updatedAt <= request.time &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['upiId', 'upiName', 'adminPhone', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().wallet == 0 &&
+                       incoming().keys().hasAll(['userId', 'email', 'ign', 'gameUid', 'phone', 'wallet', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'email', 'ign', 'gameUid', 'phone', 'wallet', 'createdAt', 'updatedAt']) &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time;
+      allow update: if isSignedIn() &&
+                       isValidId(userId) &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       (
+                         (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['wallet', 'ign', 'gameUid', 'phone', 'updatedAt'])) ||
+                         (request.auth.uid == userId &&
+                          incoming().wallet == existing().wallet &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['ign', 'gameUid', 'phone', 'updatedAt'])) ||
+                         (request.auth.uid == userId &&
+                          incoming().wallet >= 0 &&
+                          incoming().wallet <= existing().wallet &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['wallet', 'updatedAt']))
+                       );
+      allow delete: if false;
+    }
+
+    match /matches/{matchId} {
+      allow get: if isSignedIn() && isValidId(matchId);
+      allow list: if isAdmin() || (isSignedIn() && resource.data.status == 'LIVE');
+      allow create: if isAdmin() &&
+                       isValidId(matchId) &&
+                       incoming().createdBy == request.auth.uid &&
+                       incoming().joinedCount == 0 &&
+                       incoming().status == 'LIVE' &&
+                       incoming().keys().hasAll(['title', 'game', 'matchTime', 'mapName', 'entry', 'perKill', 'prize', 'slots', 'joinedCount', 'roomId', 'roomPass', 'status', 'createdBy', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['title', 'game', 'matchTime', 'mapName', 'entry', 'perKill', 'prize', 'slots', 'joinedCount', 'roomId', 'roomPass', 'status', 'createdBy', 'createdAt', 'updatedAt']) &&
+                       isValidMatch(incoming()) &&
+                       incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time;
+      allow update: if isSignedIn() &&
+                       isValidId(matchId) &&
+                       isValidMatch(incoming()) &&
+                       incoming().createdBy == existing().createdBy &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       (
+                         (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'game', 'matchTime', 'mapName', 'entry', 'perKill', 'prize', 'slots', 'roomId', 'roomPass', 'status', 'updatedAt'])) ||
+                         (existing().status == 'LIVE' &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['joinedCount', 'updatedAt']) &&
+                          incoming().joinedCount == existing().joinedCount + 1 &&
+                          incoming().joinedCount <= existing().slots &&
+                          existsAfter(/databases/$(database)/documents/registrations/$(matchId + '_' + request.auth.uid)))
+                       );
+      allow delete: if isAdmin() && isValidId(matchId);
+    }
+
+    match /registrations/{regId} {
+      allow get: if isSignedIn() && isValidId(regId) && (resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() &&
+                       isValidId(regId) &&
+                       regId == incoming().matchId + '_' + request.auth.uid &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll(['matchId', 'userId', 'ign', 'gameUid', 'phone', 'entryPaid', 'createdAt']) &&
+                       incoming().keys().hasOnly(['matchId', 'userId', 'ign', 'gameUid', 'phone', 'entryPaid', 'createdAt']) &&
+                       isValidRegistration(incoming()) &&
+                       incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                       exists(/databases/$(database)/documents/matches/$(incoming().matchId)) &&
+                       get(/databases/$(database)/documents/matches/$(incoming().matchId)).data.status == 'LIVE' &&
+                       incoming().entryPaid == get(/databases/$(database)/documents/matches/$(incoming().matchId)).data.entry &&
+                       getAfter(/databases/$(database)/documents/matches/$(incoming().matchId)).data.joinedCount == get(/databases/$(database)/documents/matches/$(incoming().matchId)).data.joinedCount + 1 &&
+                       (incoming().entryPaid == 0 || getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.wallet == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.wallet - incoming().entryPaid);
+      allow update: if false;
+      allow delete: if isAdmin() && isValidId(regId);
+    }
+
+    match /deposits/{depositId} {
+      allow get: if isSignedIn() && isValidId(depositId) && (resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() &&
+                       isValidId(depositId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().status == 'Pending' &&
+                       incoming().keys().hasAll(['userId', 'phone', 'ign', 'amount', 'utr', 'status', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'phone', 'ign', 'amount', 'utr', 'status', 'createdAt', 'updatedAt']) &&
+                       isValidDeposit(incoming()) &&
+                       incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time;
+      allow update: if isAdmin() &&
+                       isValidId(depositId) &&
+                       isValidDeposit(incoming()) &&
+                       existing().status == 'Pending' &&
+                       (incoming().status == 'Approved' || incoming().status == 'Rejected') &&
+                       incoming().userId == existing().userId &&
+                       incoming().phone == existing().phone &&
+                       incoming().ign == existing().ign &&
+                       incoming().amount == existing().amount &&
+                       incoming().utr == existing().utr &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    match /withdrawals/{withdrawalId} {
+      allow get: if isSignedIn() && isValidId(withdrawalId) && (resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() &&
+                       isValidId(withdrawalId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().status == 'Pending' &&
+                       incoming().keys().hasAll(['userId', 'phone', 'ign', 'amount', 'upiId', 'status', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'phone', 'ign', 'amount', 'upiId', 'status', 'createdAt', 'updatedAt']) &&
+                       isValidWithdrawal(incoming()) &&
+                       incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.wallet == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.wallet - incoming().amount;
+      allow update: if isAdmin() &&
+                       isValidId(withdrawalId) &&
+                       isValidWithdrawal(incoming()) &&
+                       existing().status == 'Pending' &&
+                       (incoming().status == 'Paid' || incoming().status == 'Rejected') &&
+                       incoming().userId == existing().userId &&
+                       incoming().phone == existing().phone &&
+                       incoming().ign == existing().ign &&
+                       incoming().amount == existing().amount &&
+                       incoming().upiId == existing().upiId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+      allow delete: if false;
+    }
+  }
+}

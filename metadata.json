@@ -1,0 +1,6 @@
+{
+  "name": "Firebattle",
+  "description": "Firebattle Esports tournament management app with player matchmaking, wallet deposits, withdrawals, and admin controls.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

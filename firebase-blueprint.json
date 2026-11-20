@@ -1,0 +1,313 @@
+{
+  "entities": {
+    "AdminMarker": {
+      "title": "AdminMarker",
+      "description": "Marker document granting admin privileges to the document UID.",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "description": "Admin email address."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when admin access was granted."
+        }
+      },
+      "required": ["email", "createdAt"]
+    },
+    "AppSettings": {
+      "title": "AppSettings",
+      "description": "Platform UPI payment and admin contact settings.",
+      "type": "object",
+      "properties": {
+        "upiId": {
+          "type": "string",
+          "description": "Admin UPI ID shown to players for deposits."
+        },
+        "upiName": {
+          "type": "string",
+          "description": "Receiver display name shown for UPI deposits."
+        },
+        "adminPhone": {
+          "type": "string",
+          "description": "Admin 10-digit support contact phone number."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the latest update."
+        }
+      },
+      "required": ["upiId", "upiName", "adminPhone", "updatedAt"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Registered esports player profile and wallet balance.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the player."
+        },
+        "email": {
+          "type": "string",
+          "description": "Google account email address."
+        },
+        "ign": {
+          "type": "string",
+          "description": "Player In-Game Name."
+        },
+        "gameUid": {
+          "type": "string",
+          "description": "Player in-game numeric/alphanumeric UID."
+        },
+        "phone": {
+          "type": "string",
+          "description": "Player 10-digit mobile number."
+        },
+        "wallet": {
+          "type": "integer",
+          "description": "Wallet balance in INR."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when profile was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of latest update."
+        }
+      },
+      "required": ["userId", "email", "ign", "gameUid", "phone", "wallet", "createdAt", "updatedAt"]
+    },
+    "Match": {
+      "title": "Match",
+      "description": "Esports tournament match listing and room credentials.",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Tournament title."
+        },
+        "game": {
+          "type": "string",
+          "enum": ["Free Fire MAX", "BGMI"],
+          "description": "Game title."
+        },
+        "matchTime": {
+          "type": "string",
+          "description": "Scheduled match time text."
+        },
+        "mapName": {
+          "type": "string",
+          "description": "Arena or map name."
+        },
+        "entry": {
+          "type": "integer",
+          "description": "Entry fee in INR."
+        },
+        "perKill": {
+          "type": "integer",
+          "description": "Per-kill reward in INR."
+        },
+        "prize": {
+          "type": "integer",
+          "description": "Total prize pool in INR."
+        },
+        "slots": {
+          "type": "integer",
+          "description": "Maximum total player slots."
+        },
+        "joinedCount": {
+          "type": "integer",
+          "description": "Current number of joined players."
+        },
+        "roomId": {
+          "type": "string",
+          "description": "Custom match Room ID published by admin."
+        },
+        "roomPass": {
+          "type": "string",
+          "description": "Custom match Room Password published by admin."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["LIVE", "COMPLETED"],
+          "description": "Match lifecycle status."
+        },
+        "createdBy": {
+          "type": "string",
+          "description": "Admin UID who created the match."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of match creation."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of latest match update."
+        }
+      },
+      "required": ["title", "game", "matchTime", "mapName", "entry", "perKill", "prize", "slots", "joinedCount", "roomId", "roomPass", "status", "createdBy", "createdAt", "updatedAt"]
+    },
+    "MatchRegistration": {
+      "title": "MatchRegistration",
+      "description": "Player registration record linking a player to a tournament match.",
+      "type": "object",
+      "properties": {
+        "matchId": {
+          "type": "string",
+          "description": "Target match document ID."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Registered player Firebase Auth UID."
+        },
+        "ign": {
+          "type": "string",
+          "description": "Player IGN at join time."
+        },
+        "gameUid": {
+          "type": "string",
+          "description": "Player Game UID at join time."
+        },
+        "phone": {
+          "type": "string",
+          "description": "Player 10-digit phone at join time."
+        },
+        "entryPaid": {
+          "type": "integer",
+          "description": "Entry fee deducted from wallet."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of registration."
+        }
+      },
+      "required": ["matchId", "userId", "ign", "gameUid", "phone", "entryPaid", "createdAt"]
+    },
+    "DepositRequest": {
+      "title": "DepositRequest",
+      "description": "Player UPI deposit verification request.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Player Firebase Auth UID."
+        },
+        "phone": {
+          "type": "string",
+          "description": "Player 10-digit mobile number."
+        },
+        "ign": {
+          "type": "string",
+          "description": "Player IGN."
+        },
+        "amount": {
+          "type": "integer",
+          "description": "Deposit amount in INR."
+        },
+        "utr": {
+          "type": "string",
+          "description": "12-digit UPI UTR or transaction reference number."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Pending", "Approved", "Rejected"],
+          "description": "Approval status."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of request creation."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of status update."
+        }
+      },
+      "required": ["userId", "phone", "ign", "amount", "utr", "status", "createdAt", "updatedAt"]
+    },
+    "WithdrawalRequest": {
+      "title": "WithdrawalRequest",
+      "description": "Player UPI payout withdrawal request.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Player Firebase Auth UID."
+        },
+        "phone": {
+          "type": "string",
+          "description": "Player 10-digit mobile number."
+        },
+        "ign": {
+          "type": "string",
+          "description": "Player IGN."
+        },
+        "amount": {
+          "type": "integer",
+          "description": "Withdrawal amount in INR."
+        },
+        "upiId": {
+          "type": "string",
+          "description": "Player destination UPI ID."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Pending", "Paid", "Rejected"],
+          "description": "Payout status."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of request creation."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of status update."
+        }
+      },
+      "required": ["userId", "phone", "ign", "amount", "upiId", "status", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/admins/{adminUid}": {
+      "schema": { "$ref": "#/entities/AdminMarker" },
+      "description": "Admin role marker documents keyed by Firebase Auth UID."
+    },
+    "/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/AppSettings" },
+      "description": "Singleton platform settings document at /settings/app."
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Player profile and wallet balance keyed by Firebase Auth UID."
+    },
+    "/matches/{matchId}": {
+      "schema": { "$ref": "#/entities/Match" },
+      "description": "Esports tournament matches."
+    },
+    "/registrations/{regId}": {
+      "schema": { "$ref": "#/entities/MatchRegistration" },
+      "description": "Player match registrations keyed by {matchId}_{userId}."
+    },
+    "/deposits/{depositId}": {
+      "schema": { "$ref": "#/entities/DepositRequest" },
+      "description": "UPI deposit requests submitted by players."
+    },
+    "/withdrawals/{withdrawalId}": {
+      "schema": { "$ref": "#/entities/WithdrawalRequest" },
+      "description": "UPI withdrawal requests submitted by players."
+    }
+  }
+}
