@@ -28,12 +28,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
+import androidx.compose.material.icons.outlined.CardGiftcard
 import androidx.compose.material.icons.outlined.EmojiEvents
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material3.AlertDialog
@@ -78,11 +80,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.data.model.AppSettings
 import com.example.data.model.DepositRequest
 import com.example.data.model.PlayerTab
+import com.example.data.model.ReferralRecord
 import com.example.data.model.TournamentMatch
 import com.example.data.model.UiState
 import com.example.data.model.UserProfile
@@ -113,10 +117,12 @@ fun PlayerDashboardScreen(
     joinedMatchIdsState: UiState<Set<String>>,
     depositsState: UiState<List<DepositRequest>>,
     withdrawalsState: UiState<List<WithdrawalRequest>>,
+    referralsState: UiState<List<ReferralRecord>>,
     isBusy: Boolean,
     onJoinMatch: (TournamentMatch) -> Unit,
     onSubmitDeposit: (amountText: String, utr: String, onSuccess: () -> Unit) -> Unit,
     onSubmitWithdrawal: (amountText: String, upiId: String, onSuccess: () -> Unit) -> Unit,
+    onApplyReferralCode: (code: String, onSuccess: () -> Unit) -> Unit,
     onUpdateProfile: (ign: String, gameUid: String, phone: String, onSuccess: () -> Unit) -> Unit,
     onCopyFeedback: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -175,11 +181,13 @@ fun PlayerDashboardScreen(
                         joinedMatchIdsState = joinedMatchIdsState,
                         depositsState = depositsState,
                         withdrawalsState = withdrawalsState,
+                        referralsState = referralsState,
                         isBusy = isBusy,
                         onEditProfile = { showEditProfileDialog = true },
                         onRequestJoin = { pendingJoinMatch = it },
                         onSubmitDeposit = onSubmitDeposit,
                         onSubmitWithdrawal = onSubmitWithdrawal,
+                        onApplyReferralCode = onApplyReferralCode,
                         onCopyFeedback = onCopyFeedback,
                         modifier = Modifier.widthIn(max = 840.dp)
                     )
@@ -200,7 +208,13 @@ fun PlayerDashboardScreen(
                                 selected = selected,
                                 onClick = { selectedTab = tab },
                                 icon = { PlayerTabIcon(tab, selected) },
-                                label = { Text(playerTabLabel(tab)) },
+                                label = {
+                                    Text(
+                                        text = playerTabLabel(tab),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                },
                                 colors = NavigationBarItemDefaults.colors(
                                     selectedIconColor = BlazeOrange,
                                     selectedTextColor = BlazeOrange,
@@ -222,11 +236,13 @@ fun PlayerDashboardScreen(
                     joinedMatchIdsState = joinedMatchIdsState,
                     depositsState = depositsState,
                     withdrawalsState = withdrawalsState,
+                    referralsState = referralsState,
                     isBusy = isBusy,
                     onEditProfile = { showEditProfileDialog = true },
                     onRequestJoin = { pendingJoinMatch = it },
                     onSubmitDeposit = onSubmitDeposit,
                     onSubmitWithdrawal = onSubmitWithdrawal,
+                    onApplyReferralCode = onApplyReferralCode,
                     onCopyFeedback = onCopyFeedback,
                     modifier = Modifier.padding(innerPadding)
                 )
@@ -295,11 +311,13 @@ private fun PlayerTabContent(
     joinedMatchIdsState: UiState<Set<String>>,
     depositsState: UiState<List<DepositRequest>>,
     withdrawalsState: UiState<List<WithdrawalRequest>>,
+    referralsState: UiState<List<ReferralRecord>>,
     isBusy: Boolean,
     onEditProfile: () -> Unit,
     onRequestJoin: (TournamentMatch) -> Unit,
     onSubmitDeposit: (String, String, () -> Unit) -> Unit,
     onSubmitWithdrawal: (String, String, () -> Unit) -> Unit,
+    onApplyReferralCode: (String, () -> Unit) -> Unit,
     onCopyFeedback: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -321,6 +339,16 @@ private fun PlayerTabContent(
             isBusy = isBusy,
             onSubmitDeposit = onSubmitDeposit,
             onSubmitWithdrawal = onSubmitWithdrawal,
+            onCopyFeedback = onCopyFeedback,
+            modifier = modifier
+        )
+
+        PlayerTab.REFER -> ReferEarnSection(
+            profile = profile,
+            settingsState = settingsState,
+            referralsState = referralsState,
+            isBusy = isBusy,
+            onApplyReferralCode = onApplyReferralCode,
             onCopyFeedback = onCopyFeedback,
             modifier = modifier
         )
@@ -1199,6 +1227,7 @@ private fun PlayerTabIcon(tab: PlayerTab, selected: Boolean) {
     val icon = when (tab) {
         PlayerTab.TOURNAMENTS -> if (selected) Icons.Filled.EmojiEvents else Icons.Outlined.EmojiEvents
         PlayerTab.WALLET -> if (selected) Icons.Filled.AccountBalanceWallet else Icons.Outlined.AccountBalanceWallet
+        PlayerTab.REFER -> if (selected) Icons.Filled.CardGiftcard else Icons.Outlined.CardGiftcard
         PlayerTab.REQUESTS -> if (selected) Icons.Filled.History else Icons.Outlined.History
     }
     Icon(imageVector = icon, contentDescription = playerTabLabel(tab))
@@ -1208,5 +1237,6 @@ private fun PlayerTabIcon(tab: PlayerTab, selected: Boolean) {
 private fun playerTabLabel(tab: PlayerTab): String = when (tab) {
     PlayerTab.TOURNAMENTS -> stringResource(R.string.tab_tournaments)
     PlayerTab.WALLET -> stringResource(R.string.tab_wallet)
+    PlayerTab.REFER -> stringResource(R.string.tab_refer)
     PlayerTab.REQUESTS -> stringResource(R.string.tab_requests)
 }

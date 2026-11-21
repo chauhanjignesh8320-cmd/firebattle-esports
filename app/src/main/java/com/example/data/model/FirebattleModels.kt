@@ -20,6 +20,7 @@ enum class AppMode {
 enum class PlayerTab {
     TOURNAMENTS,
     WALLET,
+    REFER,
     REQUESTS
 }
 
@@ -58,6 +59,7 @@ data class AppSettings(
     val upiId: String = "firebattle@upi",
     val upiName: String = "Firebattle Esports",
     val adminPhone: String = "9876543210",
+    val referralBonus: Long = 10L,
     @ServerTimestamp val updatedAt: Timestamp? = null
 )
 
@@ -71,8 +73,25 @@ data class UserProfile(
     val gameUid: String = "",
     val phone: String = "",
     val wallet: Long = 0L,
+    val referralCode: String = "",
+    val referredByUid: String = "",
+    val referredByCode: String = "",
+    val referralCount: Long = 0L,
+    val referralEarnings: Long = 0L,
     @ServerTimestamp val createdAt: Timestamp? = null,
     @ServerTimestamp val updatedAt: Timestamp? = null
+)
+
+@Keep
+@IgnoreExtraProperties
+data class ReferralRecord(
+    @DocumentId val id: String = "",
+    val referredUid: String = "",
+    val referredIgn: String = "",
+    val referrerUid: String = "",
+    val referrerCode: String = "",
+    val bonusAmount: Long = 0L,
+    @ServerTimestamp val createdAt: Timestamp? = null
 )
 
 @Keep

@@ -108,7 +108,7 @@ fun AdminDashboardScreen(
     onMarkWithdrawalPaid: (String) -> Unit,
     onRejectWithdrawal: (WithdrawalRequest) -> Unit,
     onAdjustUserWallet: (UserProfile, String, () -> Unit) -> Unit,
-    onSaveSettings: (String, String, String) -> Unit,
+    onSaveSettings: (String, String, String, String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(AdminTab.MATCHES) }
@@ -338,7 +338,7 @@ private fun AdminTabBody(
     onMarkWithdrawalPaid: (String) -> Unit,
     onRejectWithdrawal: (WithdrawalRequest) -> Unit,
     onRequestWalletAdjust: (UserProfile) -> Unit,
-    onSaveSettings: (String, String, String) -> Unit,
+    onSaveSettings: (String, String, String, String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     LazyColumn(
@@ -685,6 +685,13 @@ private fun AdminPlayerCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = TextSecondary
                 )
+                if (player.referralCount > 0L || player.referralCode.isNotBlank()) {
+                    Text(
+                        text = "Code: ${player.referralCode.ifBlank { "-" }} • Ref: ${player.referralCount} (₹${player.referralEarnings})",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = BlazeOrange
+                    )
+                }
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text(
@@ -711,11 +718,14 @@ private fun AdminPlayerCard(
 private fun AdminSettingsCard(
     initialSettings: AppSettings,
     isBusy: Boolean,
-    onSave: (upiId: String, upiName: String, adminPhone: String) -> Unit
+    onSave: (upiId: String, upiName: String, adminPhone: String, referralBonusText: String) -> Unit
 ) {
     var upiId by rememberSaveable(initialSettings.upiId) { mutableStateOf(initialSettings.upiId) }
     var upiName by rememberSaveable(initialSettings.upiName) { mutableStateOf(initialSettings.upiName) }
     var adminPhone by rememberSaveable(initialSettings.adminPhone) { mutableStateOf(initialSettings.adminPhone) }
+    var referralBonus by rememberSaveable(initialSettings.referralBonus) {
+        mutableStateOf(initialSettings.referralBonus.toString())
+    }
 
     val fieldColors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = EmeraldWin,
@@ -737,7 +747,7 @@ private fun AdminSettingsCard(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = "UPI & Support Configuration",
+                text = "UPI, Support & Referral Configuration",
                 style = MaterialTheme.typography.titleLarge,
                 color = BlazeOrange
             )
@@ -769,8 +779,20 @@ private fun AdminSettingsCard(
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()
             )
+            OutlinedTextField(
+                value = referralBonus,
+                onValueChange = { referralBonus = it.filter { ch -> ch.isDigit() }.take(4) },
+                label = { Text("Referral Bonus per Invite (₹0 - ₹1000)") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
+                colors = fieldColors,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("settings_referral_bonus_input")
+            )
             Button(
-                onClick = { onSave(upiId, upiName, adminPhone) },
+                onClick = { onSave(upiId, upiName, adminPhone, referralBonus) },
                 enabled = !isBusy,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = EmeraldWin,

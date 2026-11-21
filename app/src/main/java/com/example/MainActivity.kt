@@ -126,6 +126,7 @@ private fun AuthenticatedArenaShell(
     val joinedIdsState by playerViewModel.myRegistrationsState.collectAsStateWithLifecycle()
     val depositsState by playerViewModel.myDepositsState.collectAsStateWithLifecycle()
     val withdrawalsState by playerViewModel.myWithdrawalsState.collectAsStateWithLifecycle()
+    val referralsState by playerViewModel.myReferralsState.collectAsStateWithLifecycle()
     val playerBusy by playerViewModel.isBusy.collectAsStateWithLifecycle()
 
     var currentMode by rememberSaveable { mutableStateOf(AppMode.PLAYER) }
@@ -197,8 +198,14 @@ private fun AuthenticatedArenaShell(
                         suggestedName = userDisplayName.take(24),
                         email = userEmail,
                         isBusy = playerBusy,
-                        onSaveProfile = { ign, gameUid, phone ->
-                            playerViewModel.saveProfile(ign, gameUid, phone, isExisting = false)
+                        onSaveProfile = { ign, gameUid, phone, referralCode ->
+                            playerViewModel.saveProfile(
+                                ign = ign,
+                                gameUid = gameUid,
+                                phone = phone,
+                                isExisting = false,
+                                optionalFriendReferralCode = referralCode
+                            )
                         },
                         onLogout = handleLogout,
                         modifier = Modifier.padding(setupPadding)
@@ -287,11 +294,16 @@ private fun AuthenticatedArenaShell(
                                 onAdjustUserWallet = { target, delta, onSuccess ->
                                     adminViewModel.adjustUserWallet(target, delta, onSuccess)
                                 },
-                                onSaveSettings = { upiId, upiName, adminPhone ->
-                                    adminViewModel.saveSettings(upiId, upiName, adminPhone)
+                                onSaveSettings = { upiId, upiName, adminPhone, referralBonusText ->
+                                    adminViewModel.saveSettings(upiId, upiName, adminPhone, referralBonusText)
                                 }
                             )
                         } else if (profile != null) {
+                            LaunchedEffect(profile.userId, profile.referralCode) {
+                                if (profile.referralCode.isBlank()) {
+                                    playerViewModel.ensureReferralCodeIfMissing(profile)
+                                }
+                            }
                             PlayerDashboardScreen(
                                 profile = profile,
                                 settingsState = settingsState,
@@ -299,6 +311,7 @@ private fun AuthenticatedArenaShell(
                                 joinedMatchIdsState = joinedIdsState,
                                 depositsState = depositsState,
                                 withdrawalsState = withdrawalsState,
+                                referralsState = referralsState,
                                 isBusy = playerBusy,
                                 onJoinMatch = { match ->
                                     playerViewModel.joinMatch(match, profile)
@@ -308,6 +321,9 @@ private fun AuthenticatedArenaShell(
                                 },
                                 onSubmitWithdrawal = { amt, upiId, onSuccess ->
                                     playerViewModel.submitWithdrawal(profile, amt, upiId, onSuccess)
+                                },
+                                onApplyReferralCode = { code, onSuccess ->
+                                    playerViewModel.applyReferralCode(profile, code, onSuccess)
                                 },
                                 onUpdateProfile = { ign, gameUid, phone, onSuccess ->
                                     playerViewModel.saveProfile(ign, gameUid, phone, isExisting = true, onSuccess = onSuccess)

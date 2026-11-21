@@ -34,6 +34,10 @@
           "type": "string",
           "description": "Admin 10-digit support contact phone number."
         },
+        "referralBonus": {
+          "type": "integer",
+          "description": "Referral reward in INR credited to both referrer and invited player."
+        },
         "updatedAt": {
           "type": "string",
           "format": "date-time",
@@ -70,6 +74,26 @@
         "wallet": {
           "type": "integer",
           "description": "Wallet balance in INR."
+        },
+        "referralCode": {
+          "type": "string",
+          "description": "Unique uppercase referral invite code owned by this player."
+        },
+        "referredByUid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the player who referred this user, if claimed."
+        },
+        "referredByCode": {
+          "type": "string",
+          "description": "Referral code redeemed by this user."
+        },
+        "referralCount": {
+          "type": "integer",
+          "description": "Total number of friends referred."
+        },
+        "referralEarnings": {
+          "type": "integer",
+          "description": "Total referral bonus earnings in INR."
         },
         "createdAt": {
           "type": "string",
@@ -278,6 +302,64 @@
         }
       },
       "required": ["userId", "phone", "ign", "amount", "upiId", "status", "createdAt", "updatedAt"]
+    },
+    "ReferralCode": {
+      "title": "ReferralCode",
+      "description": "Public lookup directory mapping an uppercase referral code to its owner UID and IGN.",
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Unique uppercase alphanumeric referral code."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID."
+        },
+        "ign": {
+          "type": "string",
+          "description": "Owner In-Game Name."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation."
+        }
+      },
+      "required": ["code", "userId", "ign", "createdAt"]
+    },
+    "ReferralRecord": {
+      "title": "ReferralRecord",
+      "description": "Immutable record of a claimed referral reward keyed by the invited user UID.",
+      "type": "object",
+      "properties": {
+        "referredUid": {
+          "type": "string",
+          "description": "Invited player Firebase Auth UID."
+        },
+        "referredIgn": {
+          "type": "string",
+          "description": "Invited player IGN."
+        },
+        "referrerUid": {
+          "type": "string",
+          "description": "Referring player Firebase Auth UID."
+        },
+        "referrerCode": {
+          "type": "string",
+          "description": "Referral code that was claimed."
+        },
+        "bonusAmount": {
+          "type": "integer",
+          "description": "Bonus INR credited to each player."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of referral claim."
+        }
+      },
+      "required": ["referredUid", "referredIgn", "referrerUid", "referrerCode", "bonusAmount", "createdAt"]
     }
   },
   "firestore": {
@@ -292,6 +374,14 @@
     "/users/{userId}": {
       "schema": { "$ref": "#/entities/UserProfile" },
       "description": "Player profile and wallet balance keyed by Firebase Auth UID."
+    },
+    "/referralCodes/{code}": {
+      "schema": { "$ref": "#/entities/ReferralCode" },
+      "description": "Referral code lookup records keyed by uppercase code."
+    },
+    "/referrals/{referralId}": {
+      "schema": { "$ref": "#/entities/ReferralRecord" },
+      "description": "Claimed referral history records keyed by referred player UID."
     },
     "/matches/{matchId}": {
       "schema": { "$ref": "#/entities/Match" },

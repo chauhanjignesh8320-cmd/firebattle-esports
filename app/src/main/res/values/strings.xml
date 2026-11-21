@@ -11,7 +11,8 @@
     <string name="save_profile">Save Player Profile</string>
     <string name="tab_tournaments">Tournaments</string>
     <string name="tab_wallet">Wallet</string>
-    <string name="tab_requests">My Requests</string>
+    <string name="tab_refer">Refer</string>
+    <string name="tab_requests">Requests</string>
     <string name="admin_tab_matches">Matches</string>
     <string name="admin_tab_deposits">Deposits</string>
     <string name="admin_tab_withdrawals">Withdrawals</string>
@@ -27,4 +28,11 @@
     <string name="request_withdrawal">Request Withdrawal</string>
     <string name="publish_match">PUBLISH MATCH LIVE</string>
     <string name="save_settings">SAVE SETTINGS TO FIRESTORE</string>
+    <string name="refer_earn_badge">REFER &amp; EARN</string>
+    <string name="refer_your_code_title">Your Referral Invite Code</string>
+    <string name="refer_copy_code">Copy Code</string>
+    <string name="refer_share_invite">Share Invite</string>
+    <string name="refer_apply_title">Have a Friend\'s Code?</string>
+    <string name="refer_apply_button">Apply Referral Code</string>
+    <string name="refer_friends_joined">Invited Friends</string>
 </resources>

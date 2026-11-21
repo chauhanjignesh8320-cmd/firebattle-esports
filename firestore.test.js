@@ -420,3 +420,175 @@ test("Deposit & Withdrawal workflow with atomic wallet balance guards", async ()
   });
   await assertSucceeds(rejectBatch.commit());
 });
+
+test("Refer & Earn enforces unique code claim, single redemption, non-self referral, and exact bonus math", async () => {
+  const adminDb = adminContext().firestore();
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID, { email: "alice@test.com", email_verified: true }).firestore();
+  const bobDb = testEnv.authenticatedContext(BOB_UID, { email: "bob@test.com", email_verified: true }).firestore();
+  const charlieDb = testEnv.authenticatedContext("charlie_789", { email: "c@test.com", email_verified: true }).firestore();
+
+  // Admin sets referralBonus = 25
+  await assertSucceeds(
+    adminDb.collection("settings").doc("app").set({
+      upiId: "firebattle@upi",
+      upiName: "Firebattle Esports",
+      adminPhone: "9876543210",
+      referralBonus: 25,
+      updatedAt: pastDate(10000),
+    })
+  );
+
+  // Alice creates profile + referralCode atomically
+  const aliceBatch = aliceDb.batch();
+  aliceBatch.set(aliceDb.collection("users").doc(ALICE_UID), {
+    userId: ALICE_UID,
+    email: "alice@test.com",
+    ign: "AliceFF",
+    gameUid: "99887766",
+    phone: "9876543210",
+    wallet: 0,
+    referralCode: "FBALICE1",
+    referredByUid: "",
+    referredByCode: "",
+    referralCount: 0,
+    referralEarnings: 0,
+    createdAt: pastDate(5000),
+    updatedAt: pastDate(5000),
+  });
+  aliceBatch.set(aliceDb.collection("referralCodes").doc("FBALICE1"), {
+    code: "FBALICE1",
+    userId: ALICE_UID,
+    ign: "AliceFF",
+    createdAt: pastDate(5000),
+  });
+  await assertSucceeds(aliceBatch.commit());
+
+  // Bob had an existing legacy profile without referralCode -> can claim referralCode once
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().collection("users").doc(BOB_UID).set({
+      userId: BOB_UID,
+      email: "bob@test.com",
+      ign: "BobBGMI",
+      gameUid: "11223344",
+      phone: "9876543211",
+      wallet: 10,
+      createdAt: pastDate(8000),
+      updatedAt: pastDate(8000),
+    });
+  });
+
+  const bobCodeBatch = bobDb.batch();
+  bobCodeBatch.set(bobDb.collection("referralCodes").doc("FBBOB456"), {
+    code: "FBBOB456",
+    userId: BOB_UID,
+    ign: "BobBGMI",
+    createdAt: pastDate(4000),
+  });
+  bobCodeBatch.update(bobDb.collection("users").doc(BOB_UID), {
+    referralCode: "FBBOB456",
+    updatedAt: pastDate(4000),
+  });
+  await assertSucceeds(bobCodeBatch.commit());
+
+  // Cannot enumerate referralCodes or referrals unfiltered
+  await assertFails(bobDb.collection("referralCodes").get());
+  await assertFails(bobDb.collection("referrals").get());
+
+  // Lookup specific referralCode succeeds
+  await assertSucceeds(bobDb.collection("referralCodes").doc("FBALICE1").get());
+
+  // Self-referral fails
+  const selfBatch = aliceDb.batch();
+  selfBatch.set(aliceDb.collection("referrals").doc(ALICE_UID), {
+    referredUid: ALICE_UID,
+    referredIgn: "AliceFF",
+    referrerUid: ALICE_UID,
+    referrerCode: "FBALICE1",
+    bonusAmount: 25,
+    createdAt: pastDate(3000),
+  });
+  selfBatch.update(aliceDb.collection("users").doc(ALICE_UID), {
+    wallet: 25,
+    referredByUid: ALICE_UID,
+    referredByCode: "FBALICE1",
+    updatedAt: pastDate(3000),
+  });
+  await assertFails(selfBatch.commit());
+
+  // Inflated bonus (100 instead of 25) fails
+  const cheatBatch = bobDb.batch();
+  cheatBatch.set(bobDb.collection("referrals").doc(BOB_UID), {
+    referredUid: BOB_UID,
+    referredIgn: "BobBGMI",
+    referrerUid: ALICE_UID,
+    referrerCode: "FBALICE1",
+    bonusAmount: 100,
+    createdAt: pastDate(2500),
+  });
+  cheatBatch.update(bobDb.collection("users").doc(ALICE_UID), {
+    wallet: 100,
+    referralCount: 1,
+    referralEarnings: 100,
+    updatedAt: pastDate(2500),
+  });
+  cheatBatch.update(bobDb.collection("users").doc(BOB_UID), {
+    wallet: 110,
+    referredByUid: ALICE_UID,
+    referredByCode: "FBALICE1",
+    updatedAt: pastDate(2500),
+  });
+  await assertFails(cheatBatch.commit());
+
+  // Valid atomic referral claim succeeds (Alice 0 -> 25, Bob 10 -> 35)
+  const validBatch = bobDb.batch();
+  validBatch.set(bobDb.collection("referrals").doc(BOB_UID), {
+    referredUid: BOB_UID,
+    referredIgn: "BobBGMI",
+    referrerUid: ALICE_UID,
+    referrerCode: "FBALICE1",
+    bonusAmount: 25,
+    createdAt: pastDate(2000),
+  });
+  validBatch.update(bobDb.collection("users").doc(ALICE_UID), {
+    wallet: 25,
+    referralCount: 1,
+    referralEarnings: 25,
+    updatedAt: pastDate(2000),
+  });
+  validBatch.update(bobDb.collection("users").doc(BOB_UID), {
+    wallet: 35,
+    referredByUid: ALICE_UID,
+    referredByCode: "FBALICE1",
+    updatedAt: pastDate(2000),
+  });
+  await assertSucceeds(validBatch.commit());
+
+  // Duplicate referral claim by Bob fails
+  const dupBatch = bobDb.batch();
+  dupBatch.set(bobDb.collection("referrals").doc(BOB_UID), {
+    referredUid: BOB_UID,
+    referredIgn: "BobBGMI",
+    referrerUid: ALICE_UID,
+    referrerCode: "FBALICE1",
+    bonusAmount: 25,
+    createdAt: pastDate(1000),
+  });
+  dupBatch.update(bobDb.collection("users").doc(ALICE_UID), {
+    wallet: 50,
+    referralCount: 2,
+    referralEarnings: 50,
+    updatedAt: pastDate(1000),
+  });
+  dupBatch.update(bobDb.collection("users").doc(BOB_UID), {
+    wallet: 60,
+    referredByUid: ALICE_UID,
+    referredByCode: "FBALICE1",
+    updatedAt: pastDate(1000),
+  });
+  await assertFails(dupBatch.commit());
+
+  // Alice can query referrals where referrerUid == ALICE_UID; Charlie cannot
+  await assertSucceeds(aliceDb.collection("referrals").where("referrerUid", "==", ALICE_UID).get());
+  await assertFails(charlieDb.collection("referrals").where("referrerUid", "==", ALICE_UID).get());
+});
+

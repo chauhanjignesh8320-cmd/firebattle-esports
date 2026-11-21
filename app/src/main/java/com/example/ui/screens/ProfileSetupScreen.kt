@@ -23,6 +23,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Badge
+import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material3.Button
@@ -66,13 +67,14 @@ fun ProfileSetupScreen(
     suggestedName: String,
     email: String,
     isBusy: Boolean,
-    onSaveProfile: (ign: String, gameUid: String, phone: String) -> Unit,
+    onSaveProfile: (ign: String, gameUid: String, phone: String, referralCode: String) -> Unit,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var ign by rememberSaveable { mutableStateOf(existingProfile?.ign ?: suggestedName) }
     var gameUid by rememberSaveable { mutableStateOf(existingProfile?.gameUid ?: "") }
     var phone by rememberSaveable { mutableStateOf(existingProfile?.phone ?: "") }
+    var friendCode by rememberSaveable { mutableStateOf("") }
     var localError by rememberSaveable { mutableStateOf<String?>(null) }
 
     Box(
@@ -173,6 +175,23 @@ fun ProfileSetupScreen(
                             .testTag("profile_phone_input")
                     )
 
+                    OutlinedTextField(
+                        value = friendCode,
+                        onValueChange = { input ->
+                            friendCode = input.uppercase().filter { it.isLetterOrDigit() }.take(16)
+                            localError = null
+                        },
+                        label = { Text("Referral Code (Optional)") },
+                        placeholder = { Text("e.g. FB8X2K9P", color = TextMuted) },
+                        leadingIcon = { Icon(Icons.Filled.CardGiftcard, contentDescription = null, tint = EmeraldWin) },
+                        singleLine = true,
+                        colors = fieldColors,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("profile_referral_input")
+                    )
+
                     if (localError != null) {
                         ErrorBannerCard(message = localError!!)
                     }
@@ -182,11 +201,14 @@ fun ProfileSetupScreen(
                             val cleanIgn = ign.trim()
                             val cleanUid = gameUid.trim()
                             val cleanPhone = phone.trim()
+                            val cleanFriendCode = friendCode.trim()
                             when {
                                 cleanIgn.length < 2 -> localError = "IGN must be at least 2 characters."
                                 cleanUid.length < 3 -> localError = "Game UID must be at least 3 characters."
                                 cleanPhone.length != 10 -> localError = "Enter a valid 10-digit mobile number."
-                                else -> onSaveProfile(cleanIgn, cleanUid, cleanPhone)
+                                cleanFriendCode.isNotEmpty() && cleanFriendCode.length < 6 ->
+                                    localError = "Referral code must be at least 6 characters (or leave empty)."
+                                else -> onSaveProfile(cleanIgn, cleanUid, cleanPhone, cleanFriendCode)
                             }
                         },
                         enabled = !isBusy,

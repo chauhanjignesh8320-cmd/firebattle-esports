@@ -7,6 +7,7 @@ import com.example.data.firebase.FirebattleRepository
 import com.example.data.model.AppSettings
 import com.example.data.model.DepositRequest
 import com.example.data.model.MatchRegistration
+import com.example.data.model.ReferralRecord
 import com.example.data.model.TournamentMatch
 import com.example.data.model.UiState
 import com.example.data.model.UserProfile
@@ -69,10 +70,60 @@ class PlayerViewModel(
         .toUiState("withdrawals")
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), UiState.Loading)
 
-    fun saveProfile(ign: String, gameUid: String, phone: String, isExisting: Boolean, onSuccess: () -> Unit = {}) {
-        runAction("Profile saved!") {
-            repository.savePlayerProfile(ign, gameUid, phone, isExisting).also {
+    val myReferralsState: StateFlow<UiState<List<ReferralRecord>>> = repository.observeMyReferrals(currentUserId)
+        .toUiState("referrals")
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), UiState.Loading)
+
+    private var referralCodeEnsured = false
+
+    fun ensureReferralCodeIfMissing(profile: UserProfile) {
+        if (profile.referralCode.isNotBlank() || referralCodeEnsured) return
+        referralCodeEnsured = true
+        viewModelScope.launch {
+            val result = repository.ensureReferralCode(profile)
+            if (result.isFailure) {
+                referralCodeEnsured = false
+            }
+        }
+    }
+
+    fun saveProfile(
+        ign: String,
+        gameUid: String,
+        phone: String,
+        isExisting: Boolean,
+        optionalFriendReferralCode: String = "",
+        onSuccess: () -> Unit = {}
+    ) {
+        val msg = if (!isExisting && optionalFriendReferralCode.isNotBlank()) {
+            "Profile saved & referral bonus credited!"
+        } else {
+            "Profile saved!"
+        }
+        runAction(msg) {
+            repository.savePlayerProfile(ign, gameUid, phone, isExisting, optionalFriendReferralCode).also {
                 if (it.isSuccess) onSuccess()
+            }
+        }
+    }
+
+    fun applyReferralCode(profile: UserProfile, rawCode: String, onSuccess: () -> Unit = {}) {
+        if (_isBusy.value) return
+        viewModelScope.launch {
+            _isBusy.value = true
+            try {
+                val result = repository.applyReferralCodeAtomic(profile, rawCode)
+                result.fold(
+                    onSuccess = { bonus ->
+                        _events.tryEmit("Referral applied! ₹$bonus added to your wallet & your friend's wallet.")
+                        onSuccess()
+                    },
+                    onFailure = { err ->
+                        _events.tryEmit(err.localizedMessage ?: "Failed to apply referral code.")
+                    }
+                )
+            } finally {
+                _isBusy.value = false
             }
         }
     }

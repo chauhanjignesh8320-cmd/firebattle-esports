@@ -6,6 +6,7 @@ import com.example.data.model.AppSettings
 import com.example.data.model.DepositRequest
 import com.example.data.model.MatchRegistration
 import com.example.data.model.MatchStatus
+import com.example.data.model.ReferralRecord
 import com.example.data.model.TournamentMatch
 import com.example.data.model.UserProfile
 import com.example.data.model.WithdrawalRequest
@@ -201,6 +202,20 @@ class FirebattleRepository(
         )
     }
 
+    fun observeMyReferrals(uid: String): Flow<List<ReferralRecord>> = flow {
+        val path = "referrals"
+        emitAll(
+            db.collection("referrals")
+                .whereEqualTo("referrerUid", uid)
+                .snapshots()
+                .map { snapshot ->
+                    snapshot.toObjects(ReferralRecord::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
+                        .sortedByDescending { it.createdAt ?: Timestamp(0, 0) }
+                }
+                .catch { error -> handleStreamError(error, OperationType.LIST, path, uid) }
+        )
+    }
+
     fun observeAllWithdrawals(uid: String): Flow<List<WithdrawalRequest>> = flow {
         val path = "withdrawals"
         emitAll(
@@ -231,17 +246,31 @@ class FirebattleRepository(
         ign: String,
         gameUid: String,
         phone: String,
-        isExistingProfile: Boolean
+        isExistingProfile: Boolean,
+        optionalFriendReferralCode: String = ""
     ): Result<Unit> {
         val cleanIgn = ign.trim()
         val cleanGameUid = gameUid.trim()
         val cleanPhone = phone.trim()
+        val cleanFriendCode = optionalFriendReferralCode.trim().uppercase()
         var path = "users"
         return try {
             val uid = requireUserId()
             require(cleanIgn.length in 2..30) { "IGN must be between 2 and 30 characters." }
             require(cleanGameUid.length in 3..30) { "Game UID must be between 3 and 30 characters." }
             require(PHONE_REGEX.matches(cleanPhone)) { "Enter a valid 10-digit mobile number." }
+            if (!isExistingProfile && cleanFriendCode.isNotEmpty()) {
+                require(REFERRAL_CODE_REGEX.matches(cleanFriendCode)) {
+                    "Referral code must be 6 to 16 uppercase letters or digits."
+                }
+                val friendCodeSnap = db.collection("referralCodes").document(cleanFriendCode).get().await()
+                if (!friendCodeSnap.exists()) {
+                    throw IllegalArgumentException("Referral code '$cleanFriendCode' not found. Check it or leave empty.")
+                }
+                if (friendCodeSnap.getString("userId") == uid) {
+                    throw IllegalArgumentException("You cannot apply your own referral code.")
+                }
+            }
 
             val docRef = db.collection("users").document(uid)
             path = docRef.path
@@ -256,18 +285,55 @@ class FirebattleRepository(
                 ).await()
             } else {
                 val email = (auth.currentUser?.email ?: "").take(120)
-                docRef.set(
-                    mapOf(
-                        "userId" to uid,
-                        "email" to email,
-                        "ign" to cleanIgn,
-                        "gameUid" to cleanGameUid,
-                        "phone" to cleanPhone,
-                        "wallet" to 0L,
-                        "createdAt" to FieldValue.serverTimestamp(),
-                        "updatedAt" to FieldValue.serverTimestamp()
-                    )
-                ).await()
+                var created = false
+                for (attempt in 0..4) {
+                    val candidateCode = buildCandidateReferralCode(uid, attempt)
+                    val codeRef = db.collection("referralCodes").document(candidateCode)
+                    val committed = db.runTransaction { tx ->
+                        val userSnap = tx.get(docRef)
+                        val codeSnap = tx.get(codeRef)
+                        if (userSnap.exists()) return@runTransaction true
+                        if (codeSnap.exists()) return@runTransaction false
+
+                        tx.set(
+                            docRef,
+                            mapOf(
+                                "userId" to uid,
+                                "email" to email,
+                                "ign" to cleanIgn,
+                                "gameUid" to cleanGameUid,
+                                "phone" to cleanPhone,
+                                "wallet" to 0L,
+                                "referralCode" to candidateCode,
+                                "referredByUid" to "",
+                                "referredByCode" to "",
+                                "referralCount" to 0L,
+                                "referralEarnings" to 0L,
+                                "createdAt" to FieldValue.serverTimestamp(),
+                                "updatedAt" to FieldValue.serverTimestamp()
+                            )
+                        )
+                        tx.set(
+                            codeRef,
+                            mapOf(
+                                "code" to candidateCode,
+                                "userId" to uid,
+                                "ign" to cleanIgn,
+                                "createdAt" to FieldValue.serverTimestamp()
+                            )
+                        )
+                        true
+                    }.await()
+                    if (committed) {
+                        created = true
+                        break
+                    }
+                }
+                if (!created) throw IllegalStateException("Could not allocate a unique referral code. Please retry.")
+
+                if (cleanFriendCode.isNotEmpty()) {
+                    applyReferralCodeInternal(uid, cleanIgn, cleanFriendCode)
+                }
             }
             Result.success(Unit)
         } catch (e: CancellationException) {
@@ -276,6 +342,155 @@ class FirebattleRepository(
             handleFirestoreError(e, if (isExistingProfile) OperationType.UPDATE else OperationType.CREATE, path)
             Result.failure(e)
         }
+    }
+
+    suspend fun ensureReferralCode(profile: UserProfile): Result<String> {
+        if (profile.referralCode.isNotBlank()) return Result.success(profile.referralCode)
+        var path = "users/${profile.userId}"
+        return try {
+            val uid = requireUserId()
+            check(uid == profile.userId) { "Signed-in user mismatch." }
+            val userRef = db.collection("users").document(uid)
+            path = userRef.path
+            val cleanIgn = profile.ign.trim().ifBlank { "Player" }.take(30)
+
+            for (attempt in 0..4) {
+                val candidate = buildCandidateReferralCode(uid, attempt)
+                val codeRef = db.collection("referralCodes").document(candidate)
+                val assigned = db.runTransaction { tx ->
+                    val userSnap = tx.get(userRef)
+                    val codeSnap = tx.get(codeRef)
+                    val existing = userSnap.getString("referralCode").orEmpty()
+                    if (existing.isNotBlank()) return@runTransaction existing
+                    if (codeSnap.exists()) return@runTransaction null
+
+                    tx.set(
+                        codeRef,
+                        mapOf(
+                            "code" to candidate,
+                            "userId" to uid,
+                            "ign" to cleanIgn,
+                            "createdAt" to FieldValue.serverTimestamp()
+                        )
+                    )
+                    tx.update(
+                        userRef,
+                        mapOf(
+                            "referralCode" to candidate,
+                            "updatedAt" to FieldValue.serverTimestamp()
+                        )
+                    )
+                    candidate
+                }.await()
+                if (!assigned.isNullOrBlank()) {
+                    return Result.success(assigned)
+                }
+            }
+            Result.failure(IllegalStateException("Unable to generate referral code right now."))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.WRITE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun applyReferralCodeAtomic(profile: UserProfile, rawCode: String): Result<Long> {
+        val cleanCode = rawCode.trim().uppercase()
+        val path = "referrals/${profile.userId}"
+        return try {
+            val uid = requireUserId()
+            check(uid == profile.userId) { "Signed-in user changed; refusing referral claim." }
+            require(REFERRAL_CODE_REGEX.matches(cleanCode)) {
+                "Enter a valid 6 to 16 character alphanumeric referral code."
+            }
+            val cleanIgn = profile.ign.trim().ifBlank { "Player" }.take(30)
+            val bonus = applyReferralCodeInternal(uid, cleanIgn, cleanCode)
+            Result.success(bonus)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.WRITE, path)
+            Result.failure(e)
+        }
+    }
+
+    private suspend fun applyReferralCodeInternal(uid: String, cleanIgn: String, cleanCode: String): Long {
+        return db.runTransaction { tx ->
+            val settingsRef = db.collection("settings").document("app")
+            val codeRef = db.collection("referralCodes").document(cleanCode)
+            val referralRef = db.collection("referrals").document(uid)
+            val selfRef = db.collection("users").document(uid)
+
+            val settingsSnap = tx.get(settingsRef)
+            val codeSnap = tx.get(codeRef)
+            val existingReferralSnap = tx.get(referralRef)
+            val selfSnap = tx.get(selfRef)
+
+            if (!codeSnap.exists()) throw IllegalStateException("Referral code '$cleanCode' not found.")
+            val referrerUid = codeSnap.getString("userId").orEmpty()
+            if (referrerUid.isBlank()) throw IllegalStateException("Referral code is invalid.")
+            if (referrerUid == uid) throw IllegalStateException("You cannot apply your own referral code.")
+            if (existingReferralSnap.exists() || selfSnap.getString("referredByUid").orEmpty().isNotBlank()) {
+                throw IllegalStateException("You have already claimed a referral reward.")
+            }
+
+            val referrerRef = db.collection("users").document(referrerUid)
+            val referrerSnap = tx.get(referrerRef)
+            if (!referrerSnap.exists()) throw IllegalStateException("Referrer account no longer exists.")
+
+            val bonus = if (settingsSnap.exists()) (settingsSnap.getLong("referralBonus") ?: 10L) else 10L
+            if (bonus <= 0L) throw IllegalStateException("Referral rewards are currently paused by the organizer.")
+
+            val referrerWallet = referrerSnap.getLong("wallet") ?: 0L
+            val referrerCount = referrerSnap.getLong("referralCount") ?: 0L
+            val referrerEarnings = referrerSnap.getLong("referralEarnings") ?: 0L
+            val selfWallet = selfSnap.getLong("wallet") ?: 0L
+
+            tx.set(
+                referralRef,
+                mapOf(
+                    "referredUid" to uid,
+                    "referredIgn" to cleanIgn,
+                    "referrerUid" to referrerUid,
+                    "referrerCode" to cleanCode,
+                    "bonusAmount" to bonus,
+                    "createdAt" to FieldValue.serverTimestamp()
+                )
+            )
+            tx.update(
+                referrerRef,
+                mapOf(
+                    "wallet" to (referrerWallet + bonus),
+                    "referralCount" to (referrerCount + 1L),
+                    "referralEarnings" to (referrerEarnings + bonus),
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            )
+            tx.update(
+                selfRef,
+                mapOf(
+                    "wallet" to (selfWallet + bonus),
+                    "referredByUid" to referrerUid,
+                    "referredByCode" to cleanCode,
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            )
+            bonus
+        }.await()
+    }
+
+    private fun buildCandidateReferralCode(uid: String, attempt: Int): String {
+        val cleaned = uid.filter { it.isLetterOrDigit() }.uppercase()
+        val base = ("FB" + cleaned.take(6)).padEnd(8, 'X').take(8)
+        if (attempt == 0) return base
+        val suffix = ((uid.hashCode() xor (attempt * 7919)) and 0xFFFF)
+            .toString(36)
+            .uppercase()
+            .filter { it.isLetterOrDigit() }
+            .padStart(2, '0')
+            .take(2)
+        return (base.take(6) + suffix).take(8)
     }
 
     suspend fun joinMatchAtomic(matchId: String, profile: UserProfile): Result<Unit> {
@@ -445,6 +660,7 @@ class FirebattleRepository(
                         "upiId" to "firebattle@upi",
                         "upiName" to "Firebattle Esports",
                         "adminPhone" to "9876543210",
+                        "referralBonus" to 10L,
                         "updatedAt" to FieldValue.serverTimestamp()
                     )
                 ).await()
@@ -722,7 +938,12 @@ class FirebattleRepository(
         }
     }
 
-    suspend fun saveAppSettings(upiId: String, upiName: String, adminPhone: String): Result<Unit> {
+    suspend fun saveAppSettings(
+        upiId: String,
+        upiName: String,
+        adminPhone: String,
+        referralBonus: Long = 10L
+    ): Result<Unit> {
         val cleanUpiId = upiId.trim()
         val cleanUpiName = upiName.trim()
         val cleanPhone = adminPhone.trim()
@@ -732,12 +953,14 @@ class FirebattleRepository(
             require(cleanUpiId.length in 3..80) { "UPI ID must be 3 to 80 characters." }
             require(cleanUpiName.length in 2..60) { "Receiver Name must be 2 to 60 characters." }
             require(PHONE_REGEX.matches(cleanPhone)) { "Admin phone must be 10 digits." }
+            require(referralBonus in 0L..1000L) { "Referral bonus must be ₹0 to ₹1,000." }
 
             db.collection("settings").document("app").set(
                 mapOf(
                     "upiId" to cleanUpiId,
                     "upiName" to cleanUpiName,
                     "adminPhone" to cleanPhone,
+                    "referralBonus" to referralBonus,
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
             ).await()
@@ -752,6 +975,7 @@ class FirebattleRepository(
 
     companion object {
         private val PHONE_REGEX = Regex("^[0-9]{10}$")
+        private val REFERRAL_CODE_REGEX = Regex("^[A-Z0-9]{6,16}$")
         const val BOOTSTRAPPED_ADMIN_EMAIL = "chauhanjignesh8320@gmail.com"
     }
 }

@@ -29,10 +29,15 @@ service cloud.firestore {
       );
     }
 
+    function isValidReferralCode(code) {
+      return code is string && code.size() >= 6 && code.size() <= 16 && code.matches('^[A-Z0-9]+$');
+    }
+
     function isValidSettings(data) {
       return data.upiId is string && data.upiId.size() >= 3 && data.upiId.size() <= 80 &&
              data.upiName is string && data.upiName.size() >= 2 && data.upiName.size() <= 60 &&
-             data.adminPhone is string && data.adminPhone.matches('^[0-9]{10}$');
+             data.adminPhone is string && data.adminPhone.matches('^[0-9]{10}$') &&
+             (!('referralBonus' in data) || (data.referralBonus is int && data.referralBonus >= 0 && data.referralBonus <= 1000));
     }
 
     function isValidUserProfile(data) {
@@ -41,7 +46,12 @@ service cloud.firestore {
              data.ign is string && data.ign.size() >= 2 && data.ign.size() <= 30 &&
              data.gameUid is string && data.gameUid.size() >= 3 && data.gameUid.size() <= 30 &&
              data.phone is string && data.phone.matches('^[0-9]{10}$') &&
-             data.wallet is int && data.wallet >= 0 && data.wallet <= 10000000;
+             data.wallet is int && data.wallet >= 0 && data.wallet <= 10000000 &&
+             (!('referralCode' in data) || data.referralCode == '' || isValidReferralCode(data.referralCode)) &&
+             (!('referredByUid' in data) || (data.referredByUid is string && data.referredByUid.size() <= 128)) &&
+             (!('referredByCode' in data) || data.referredByCode == '' || isValidReferralCode(data.referredByCode)) &&
+             (!('referralCount' in data) || (data.referralCount is int && data.referralCount >= 0 && data.referralCount <= 100000)) &&
+             (!('referralEarnings' in data) || (data.referralEarnings is int && data.referralEarnings >= 0 && data.referralEarnings <= 10000000));
     }
 
     function isValidMatch(data) {
@@ -98,7 +108,7 @@ service cloud.firestore {
       allow create: if isAdmin() &&
                        settingId == 'app' &&
                        incoming().keys().hasAll(['upiId', 'upiName', 'adminPhone', 'updatedAt']) &&
-                       incoming().keys().hasOnly(['upiId', 'upiName', 'adminPhone', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['upiId', 'upiName', 'adminPhone', 'referralBonus', 'updatedAt']) &&
                        isValidSettings(incoming()) &&
                        incoming().updatedAt is timestamp &&
                        incoming().updatedAt <= request.time;
@@ -107,7 +117,7 @@ service cloud.firestore {
                        isValidSettings(incoming()) &&
                        incoming().updatedAt is timestamp &&
                        incoming().updatedAt <= request.time &&
-                       incoming().diff(existing()).affectedKeys().hasOnly(['upiId', 'upiName', 'adminPhone', 'updatedAt']);
+                       incoming().diff(existing()).affectedKeys().hasOnly(['upiId', 'upiName', 'adminPhone', 'referralBonus', 'updatedAt']);
       allow delete: if false;
     }
 
@@ -119,9 +129,15 @@ service cloud.firestore {
                        request.auth.uid == userId &&
                        incoming().userId == request.auth.uid &&
                        incoming().wallet == 0 &&
+                       incoming().get('referredByUid', '') == '' &&
+                       incoming().get('referredByCode', '') == '' &&
+                       incoming().get('referralCount', 0) == 0 &&
+                       incoming().get('referralEarnings', 0) == 0 &&
                        incoming().keys().hasAll(['userId', 'email', 'ign', 'gameUid', 'phone', 'wallet', 'createdAt', 'updatedAt']) &&
-                       incoming().keys().hasOnly(['userId', 'email', 'ign', 'gameUid', 'phone', 'wallet', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'email', 'ign', 'gameUid', 'phone', 'wallet', 'referralCode', 'referredByUid', 'referredByCode', 'referralCount', 'referralEarnings', 'createdAt', 'updatedAt']) &&
                        isValidUserProfile(incoming()) &&
+                       (incoming().get('referralCode', '') == '' ||
+                        existsAfter(/databases/$(database)/documents/referralCodes/$(incoming().referralCode))) &&
                        incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
                        incoming().updatedAt is timestamp && incoming().updatedAt <= request.time;
       allow update: if isSignedIn() &&
@@ -138,9 +154,79 @@ service cloud.firestore {
                          (request.auth.uid == userId &&
                           incoming().wallet >= 0 &&
                           incoming().wallet <= existing().wallet &&
-                          incoming().diff(existing()).affectedKeys().hasOnly(['wallet', 'updatedAt']))
+                          incoming().diff(existing()).affectedKeys().hasOnly(['wallet', 'updatedAt'])) ||
+                         (request.auth.uid == userId &&
+                          existing().get('referralCode', '') == '' &&
+                          isValidReferralCode(incoming().referralCode) &&
+                          incoming().wallet == existing().wallet &&
+                          incoming().get('referralCount', 0) == existing().get('referralCount', 0) &&
+                          incoming().get('referralEarnings', 0) == existing().get('referralEarnings', 0) &&
+                          incoming().get('referredByUid', '') == existing().get('referredByUid', '') &&
+                          incoming().get('referredByCode', '') == existing().get('referredByCode', '') &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['referralCode', 'referralCount', 'referralEarnings', 'referredByUid', 'referredByCode', 'updatedAt']) &&
+                          existsAfter(/databases/$(database)/documents/referralCodes/$(incoming().referralCode))) ||
+                         (request.auth.uid == userId &&
+                          existing().get('referredByUid', '') == '' &&
+                          incoming().referredByUid is string &&
+                          incoming().referredByUid.size() >= 1 &&
+                          incoming().referredByUid != request.auth.uid &&
+                          isValidReferralCode(incoming().referredByCode) &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['wallet', 'referredByUid', 'referredByCode', 'updatedAt']) &&
+                          !exists(/databases/$(database)/documents/referrals/$(request.auth.uid)) &&
+                          existsAfter(/databases/$(database)/documents/referrals/$(request.auth.uid)) &&
+                          getAfter(/databases/$(database)/documents/referrals/$(request.auth.uid)).data.referrerUid == incoming().referredByUid &&
+                          getAfter(/databases/$(database)/documents/referrals/$(request.auth.uid)).data.referrerCode == incoming().referredByCode &&
+                          incoming().wallet == existing().wallet + getAfter(/databases/$(database)/documents/referrals/$(request.auth.uid)).data.bonusAmount) ||
+                         (request.auth.uid != userId &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['wallet', 'referralCount', 'referralEarnings', 'updatedAt']) &&
+                          !exists(/databases/$(database)/documents/referrals/$(request.auth.uid)) &&
+                          existsAfter(/databases/$(database)/documents/referrals/$(request.auth.uid)) &&
+                          getAfter(/databases/$(database)/documents/referrals/$(request.auth.uid)).data.referrerUid == userId &&
+                          incoming().wallet == existing().wallet + getAfter(/databases/$(database)/documents/referrals/$(request.auth.uid)).data.bonusAmount &&
+                          incoming().referralCount == existing().get('referralCount', 0) + 1 &&
+                          incoming().referralEarnings == existing().get('referralEarnings', 0) + getAfter(/databases/$(database)/documents/referrals/$(request.auth.uid)).data.bonusAmount)
                        );
       allow delete: if false;
+    }
+
+    match /referralCodes/{code} {
+      allow get: if isSignedIn() && isValidReferralCode(code);
+      allow list: if isAdmin();
+      allow create: if isSignedIn() &&
+                       isValidReferralCode(code) &&
+                       incoming().keys().hasAll(['code', 'userId', 'ign', 'createdAt']) &&
+                       incoming().keys().hasOnly(['code', 'userId', 'ign', 'createdAt']) &&
+                       incoming().code == code &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().ign is string && incoming().ign.size() >= 2 && incoming().ign.size() <= 30 &&
+                       incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                       getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.referralCode == code;
+      allow update, delete: if false;
+    }
+
+    match /referrals/{referralId} {
+      allow get: if isSignedIn() && isValidId(referralId) &&
+                    (resource.data.referrerUid == request.auth.uid || resource.data.referredUid == request.auth.uid || isAdmin());
+      allow list: if isAdmin() || (isSignedIn() && (resource.data.referrerUid == request.auth.uid || resource.data.referredUid == request.auth.uid));
+      allow create: if isSignedIn() &&
+                       referralId == request.auth.uid &&
+                       incoming().keys().hasAll(['referredUid', 'referredIgn', 'referrerUid', 'referrerCode', 'bonusAmount', 'createdAt']) &&
+                       incoming().keys().hasOnly(['referredUid', 'referredIgn', 'referrerUid', 'referrerCode', 'bonusAmount', 'createdAt']) &&
+                       incoming().referredUid == request.auth.uid &&
+                       incoming().referredIgn is string && incoming().referredIgn.size() >= 2 && incoming().referredIgn.size() <= 30 &&
+                       incoming().referrerUid is string && incoming().referrerUid.size() >= 1 && incoming().referrerUid.size() <= 128 &&
+                       incoming().referrerUid != request.auth.uid &&
+                       isValidReferralCode(incoming().referrerCode) &&
+                       incoming().bonusAmount is int && incoming().bonusAmount > 0 && incoming().bonusAmount <= 1000 &&
+                       incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                       get(/databases/$(database)/documents/referralCodes/$(incoming().referrerCode)).data.userId == incoming().referrerUid &&
+                       (
+                         (!exists(/databases/$(database)/documents/settings/app) && incoming().bonusAmount == 10) ||
+                         (exists(/databases/$(database)/documents/settings/app) && incoming().bonusAmount == get(/databases/$(database)/documents/settings/app).data.get('referralBonus', 10))
+                       ) &&
+                       getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.referredByUid == incoming().referrerUid &&
+                       getAfter(/databases/$(database)/documents/users/$(incoming().referrerUid)).data.referralCount == get(/databases/$(database)/documents/users/$(incoming().referrerUid)).data.get('referralCount', 0) + 1;
+      allow update, delete: if false;
     }
 
     match /matches/{matchId} {
