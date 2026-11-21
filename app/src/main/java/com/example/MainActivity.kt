@@ -281,6 +281,7 @@ private fun AuthenticatedArenaShell(
                             val regsByMatch by adminViewModel.registrationsByMatchState.collectAsStateWithLifecycle()
                             val allDeposits by adminViewModel.allDepositsState.collectAsStateWithLifecycle()
                             val allWithdrawals by adminViewModel.allWithdrawalsState.collectAsStateWithLifecycle()
+                            val ownerPayouts by adminViewModel.ownerPayoutsState.collectAsStateWithLifecycle()
                             val allUsers by adminViewModel.allUsersState.collectAsStateWithLifecycle()
                             val adminSettings by adminViewModel.settingsState.collectAsStateWithLifecycle()
                             val adminBusy by adminViewModel.isBusy.collectAsStateWithLifecycle()
@@ -290,6 +291,7 @@ private fun AuthenticatedArenaShell(
                                 registrationsState = regsByMatch,
                                 depositsState = allDeposits,
                                 withdrawalsState = allWithdrawals,
+                                ownerPayoutsState = ownerPayouts,
                                 usersState = allUsers,
                                 settingsState = adminSettings,
                                 isBusy = adminBusy,
@@ -323,6 +325,15 @@ private fun AuthenticatedArenaShell(
                                 },
                                 onSaveSettings = { draft ->
                                     adminViewModel.saveSettings(draft)
+                                },
+                                onWithdrawOwnerProfit = { amountText, upiId, note, availableProfit, onSuccess ->
+                                    adminViewModel.withdrawOwnerProfit(
+                                        amountText = amountText,
+                                        upiId = upiId,
+                                        note = note,
+                                        availableProfit = availableProfit,
+                                        onSuccess = onSuccess
+                                    )
                                 }
                             )
                         } else if (profile != null) {

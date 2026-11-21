@@ -392,6 +392,35 @@
         }
       },
       "required": ["referredUid", "referredIgn", "referrerUid", "referrerCode", "bonusAmount", "createdAt"]
+    },
+    "OwnerPayout": {
+      "title": "OwnerPayout",
+      "description": "Immutable organizer profit withdrawal ledger record created by an admin.",
+      "type": "object",
+      "properties": {
+        "adminUid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the admin who recorded the profit withdrawal."
+        },
+        "amount": {
+          "type": "integer",
+          "description": "Organizer profit amount withdrawn in INR."
+        },
+        "upiId": {
+          "type": "string",
+          "description": "Destination UPI ID for the organizer profit transfer."
+        },
+        "note": {
+          "type": "string",
+          "description": "Optional note or payout remark."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of profit withdrawal."
+        }
+      },
+      "required": ["adminUid", "amount", "upiId", "note", "createdAt"]
     }
   },
   "firestore": {
@@ -430,6 +459,10 @@
     "/withdrawals/{withdrawalId}": {
       "schema": { "$ref": "#/entities/WithdrawalRequest" },
       "description": "UPI withdrawal requests submitted by players."
+    },
+    "/ownerPayouts/{payoutId}": {
+      "schema": { "$ref": "#/entities/OwnerPayout" },
+      "description": "Admin-only organizer profit withdrawal ledger records."
     }
   }
 }

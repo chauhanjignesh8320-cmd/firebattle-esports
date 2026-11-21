@@ -48,4 +48,6 @@
     <string name="profile_ids_title">Player IDs &amp; Referral</string>
     <string name="profile_edit_title">Edit My Profile</string>
     <string name="profile_save_changes">Save Profile Changes</string>
+    <string name="admin_withdraw_profit_button">Withdraw Profit</string>
+    <string name="admin_owner_payouts_title">Owner Profit Withdrawals</string>
 </resources>

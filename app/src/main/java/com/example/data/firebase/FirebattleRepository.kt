@@ -7,6 +7,7 @@ import com.example.data.model.DEFAULT_APP_DOWNLOAD_URL
 import com.example.data.model.DepositRequest
 import com.example.data.model.MatchRegistration
 import com.example.data.model.MatchStatus
+import com.example.data.model.OwnerPayout
 import com.example.data.model.ReferralRecord
 import com.example.data.model.TournamentMatch
 import com.example.data.model.UserProfile
@@ -253,6 +254,19 @@ class FirebattleRepository(
                 .snapshots()
                 .map { snapshot ->
                     snapshot.toObjects(UserProfile::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
+                        .sortedByDescending { it.createdAt ?: Timestamp(0, 0) }
+                }
+                .catch { error -> handleStreamError(error, OperationType.LIST, path, uid) }
+        )
+    }
+
+    fun observeOwnerPayouts(uid: String): Flow<List<OwnerPayout>> = flow {
+        val path = "ownerPayouts"
+        emitAll(
+            db.collection("ownerPayouts")
+                .snapshots()
+                .map { snapshot ->
+                    snapshot.toObjects(OwnerPayout::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
                         .sortedByDescending { it.createdAt ?: Timestamp(0, 0) }
                 }
                 .catch { error -> handleStreamError(error, OperationType.LIST, path, uid) }
@@ -1056,9 +1070,46 @@ class FirebattleRepository(
         }
     }
 
+    suspend fun recordOwnerProfitWithdrawal(
+        amount: Long,
+        upiId: String,
+        note: String
+    ): Result<Unit> {
+        val cleanUpi = upiId.trim()
+        val cleanNote = note.trim()
+        var path = "ownerPayouts"
+        return try {
+            val uid = requireUserId()
+            require(amount in 1L..10_000_000L) { "Profit withdrawal amount must be ₹1 to ₹1,00,00,000." }
+            require(OWNER_UPI_REGEX.matches(cleanUpi) && cleanUpi.length in 3..80) {
+                "Enter a valid UPI ID (e.g. owner@okaxis)."
+            }
+            require(cleanNote.length <= 100) { "Note must be at most 100 characters." }
+
+            val docRef = db.collection("ownerPayouts").document()
+            path = docRef.path
+            docRef.set(
+                mapOf(
+                    "adminUid" to uid,
+                    "amount" to amount,
+                    "upiId" to cleanUpi,
+                    "note" to cleanNote,
+                    "createdAt" to FieldValue.serverTimestamp()
+                )
+            ).await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.CREATE, path)
+            Result.failure(e)
+        }
+    }
+
     companion object {
         private val PHONE_REGEX = Regex("^[0-9]{10}$")
         private val REFERRAL_CODE_REGEX = Regex("^[A-Z0-9]{6,16}$")
+        private val OWNER_UPI_REGEX = Regex("^[^\\s@]+@[^\\s@]+$")
         const val BOOTSTRAPPED_ADMIN_EMAIL = "chauhanjignesh8320@gmail.com"
     }
 }

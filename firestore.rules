@@ -105,6 +105,13 @@ service cloud.firestore {
              (data.status == 'Pending' || data.status == 'Paid' || data.status == 'Rejected');
     }
 
+    function isValidOwnerPayout(data) {
+      return data.adminUid is string && data.adminUid.size() >= 1 && data.adminUid.size() <= 128 &&
+             data.amount is int && data.amount >= 1 && data.amount <= 10000000 &&
+             data.upiId is string && data.upiId.size() >= 3 && data.upiId.size() <= 80 && data.upiId.matches('^[^\\s@]+@[^\\s@]+$') &&
+             data.note is string && data.note.size() <= 100;
+    }
+
     match /admins/{adminUid} {
       allow get: if isSignedIn() && isValidId(adminUid) && request.auth.uid == adminUid;
       allow list, create, update, delete: if false;
@@ -352,6 +359,19 @@ service cloud.firestore {
                        incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
                        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
       allow delete: if false;
+    }
+
+    match /ownerPayouts/{payoutId} {
+      allow get, list: if isAdmin();
+      allow create: if isAdmin() &&
+                       isValidId(payoutId) &&
+                       incoming().adminUid == request.auth.uid &&
+                       incoming().keys().hasAll(['adminUid', 'amount', 'upiId', 'note', 'createdAt']) &&
+                       incoming().keys().hasOnly(['adminUid', 'amount', 'upiId', 'note', 'createdAt']) &&
+                       isValidOwnerPayout(incoming()) &&
+                       incoming().createdAt is timestamp &&
+                       incoming().createdAt <= request.time;
+      allow update, delete: if false;
     }
   }
 }

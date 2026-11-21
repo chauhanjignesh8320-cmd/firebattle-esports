@@ -717,4 +717,50 @@ test("Organizer withdrawal fee %, minWithdrawal, and sponsor URL rules are enfor
   await assertSucceeds(okBatch.commit());
 });
 
+test("Admin profit withdrawal ledger (ownerPayouts) is admin-only and immutable", async () => {
+  const adminDb = adminContext().firestore();
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID, { email: "alice@test.com", email_verified: true }).firestore();
+
+  // Player cannot create or list ownerPayouts
+  await assertFails(
+    aliceDb.collection("ownerPayouts").doc("payout_bad").set({
+      adminUid: ALICE_UID,
+      amount: 500,
+      upiId: "alice@ybl",
+      note: "Hack",
+      createdAt: pastDate(3000),
+    })
+  );
+  await assertFails(aliceDb.collection("ownerPayouts").get());
+
+  // Admin cannot create with invalid UPI ID
+  await assertFails(
+    adminDb.collection("ownerPayouts").doc("payout_bad_upi").set({
+      adminUid: ADMIN_UID,
+      amount: 500,
+      upiId: "invalid-upi",
+      note: "Profit",
+      createdAt: pastDate(2500),
+    })
+  );
+
+  // Admin creates valid profit withdrawal
+  await assertSucceeds(
+    adminDb.collection("ownerPayouts").doc("payout_1").set({
+      adminUid: ADMIN_UID,
+      amount: 500,
+      upiId: "owner@okaxis",
+      note: "Weekly tournament profit",
+      createdAt: pastDate(2000),
+    })
+  );
+
+  // Admin can list & read, but cannot update or delete (immutable ledger)
+  await assertSucceeds(adminDb.collection("ownerPayouts").get());
+  await assertFails(aliceDb.collection("ownerPayouts").doc("payout_1").get());
+  await assertFails(adminDb.collection("ownerPayouts").doc("payout_1").update({ amount: 999 }));
+  await assertFails(adminDb.collection("ownerPayouts").doc("payout_1").delete());
+});
+
+
 

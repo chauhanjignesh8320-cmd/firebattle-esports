@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -18,16 +21,20 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.AlertDialog
@@ -36,6 +43,7 @@ import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -44,6 +52,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.NavigationRailItemDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -58,6 +67,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -69,6 +79,7 @@ import com.example.data.model.AdminTab
 import com.example.data.model.AppSettings
 import com.example.data.model.DepositRequest
 import com.example.data.model.MatchRegistration
+import com.example.data.model.OwnerPayout
 import com.example.data.model.TournamentMatch
 import com.example.data.model.UiState
 import com.example.data.model.UserProfile
@@ -78,6 +89,7 @@ import com.example.ui.components.EmptyArenaState
 import com.example.ui.components.ErrorBannerCard
 import com.example.ui.components.StatTile
 import com.example.ui.components.StatusBadge
+import com.example.ui.components.buildUpiPaymentUri
 import com.example.ui.components.formatTimestampShort
 import com.example.ui.theme.ArenaObsidian
 import com.example.ui.theme.ArenaSlateBorder
@@ -88,6 +100,7 @@ import com.example.ui.theme.BlazeOrangeContainer
 import com.example.ui.theme.CrimsonReject
 import com.example.ui.theme.EmeraldWin
 import com.example.ui.theme.JetBrainsMonoFamily
+import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
 import com.example.ui.viewmodel.AdminSettingsDraft
@@ -98,6 +111,7 @@ fun AdminDashboardScreen(
     registrationsState: UiState<Map<String, List<MatchRegistration>>>,
     depositsState: UiState<List<DepositRequest>>,
     withdrawalsState: UiState<List<WithdrawalRequest>>,
+    ownerPayoutsState: UiState<List<OwnerPayout>>,
     usersState: UiState<List<UserProfile>>,
     settingsState: UiState<AppSettings>,
     isBusy: Boolean,
@@ -112,11 +126,17 @@ fun AdminDashboardScreen(
     onRejectWithdrawal: (WithdrawalRequest) -> Unit,
     onAdjustUserWallet: (UserProfile, String, () -> Unit) -> Unit,
     onSaveSettings: (AdminSettingsDraft) -> Unit,
+    onWithdrawOwnerProfit: (amountText: String, upiId: String, note: String, availableProfit: Long, onSuccess: () -> Unit) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(AdminTab.MATCHES) }
     var matchToDelete by remember { mutableStateOf<TournamentMatch?>(null) }
     var userToAdjustWallet by remember { mutableStateOf<UserProfile?>(null) }
+    var showProfitWithdrawDialog by rememberSaveable { mutableStateOf(false) }
+
+    val profitSummary = remember(depositsState, withdrawalsState, ownerPayoutsState) {
+        computeOwnerProfitSummary(depositsState, withdrawalsState, ownerPayoutsState)
+    }
 
     BackHandler {
         if (selectedTab != AdminTab.MATCHES) {
@@ -173,6 +193,8 @@ fun AdminDashboardScreen(
                         registrationsState = registrationsState,
                         depositsState = depositsState,
                         withdrawalsState = withdrawalsState,
+                        ownerPayoutsState = ownerPayoutsState,
+                        profitSummary = profitSummary,
                         usersState = usersState,
                         settingsState = settingsState,
                         isBusy = isBusy,
@@ -186,6 +208,7 @@ fun AdminDashboardScreen(
                         onRejectWithdrawal = onRejectWithdrawal,
                         onRequestWalletAdjust = { userToAdjustWallet = it },
                         onSaveSettings = onSaveSettings,
+                        onOpenProfitWithdraw = { showProfitWithdrawDialog = true },
                         modifier = Modifier.widthIn(max = 860.dp)
                     )
                 }
@@ -232,6 +255,8 @@ fun AdminDashboardScreen(
                     registrationsState = registrationsState,
                     depositsState = depositsState,
                     withdrawalsState = withdrawalsState,
+                    ownerPayoutsState = ownerPayoutsState,
+                    profitSummary = profitSummary,
                     usersState = usersState,
                     settingsState = settingsState,
                     isBusy = isBusy,
@@ -245,6 +270,7 @@ fun AdminDashboardScreen(
                     onRejectWithdrawal = onRejectWithdrawal,
                     onRequestWalletAdjust = { userToAdjustWallet = it },
                     onSaveSettings = onSaveSettings,
+                    onOpenProfitWithdraw = { showProfitWithdrawDialog = true },
                     modifier = Modifier.padding(innerPadding)
                 )
             }
@@ -320,6 +346,56 @@ fun AdminDashboardScreen(
             }
         )
     }
+    if (showProfitWithdrawDialog) {
+        val defaultUpi = (settingsState as? UiState.Success)?.data?.upiId ?: ""
+        val defaultName = (settingsState as? UiState.Success)?.data?.upiName ?: "Firebattle Organizer"
+        OwnerProfitWithdrawDialog(
+            availableProfit = profitSummary.availableProfit,
+            defaultUpiId = defaultUpi,
+            defaultUpiName = defaultName,
+            isBusy = isBusy,
+            onDismiss = { showProfitWithdrawDialog = false },
+            onConfirm = { amountText, upiId, note ->
+                onWithdrawOwnerProfit(
+                    amountText,
+                    upiId,
+                    note,
+                    profitSummary.availableProfit
+                ) {
+                    showProfitWithdrawDialog = false
+                }
+            }
+        )
+    }
+}
+
+private data class OwnerProfitSummary(
+    val approvedDeposits: Long,
+    val paidWithdrawals: Long,
+    val ownerWithdrawn: Long,
+    val availableProfit: Long
+)
+
+private fun computeOwnerProfitSummary(
+    depositsState: UiState<List<DepositRequest>>,
+    withdrawalsState: UiState<List<WithdrawalRequest>>,
+    ownerPayoutsState: UiState<List<OwnerPayout>>
+): OwnerProfitSummary {
+    val approvedDeposits = (depositsState as? UiState.Success)?.data
+        ?.filter { it.status == "Approved" }
+        ?.sumOf { it.amount } ?: 0L
+    val paidWithdrawals = (withdrawalsState as? UiState.Success)?.data
+        ?.filter { it.status == "Paid" }
+        ?.sumOf { it.resolvedNetPayout } ?: 0L
+    val ownerWithdrawn = (ownerPayoutsState as? UiState.Success)?.data
+        ?.sumOf { it.amount } ?: 0L
+    val available = (approvedDeposits - paidWithdrawals - ownerWithdrawn).coerceAtLeast(0L)
+    return OwnerProfitSummary(
+        approvedDeposits = approvedDeposits,
+        paidWithdrawals = paidWithdrawals,
+        ownerWithdrawn = ownerWithdrawn,
+        availableProfit = available
+    )
 }
 
 @Composable
@@ -329,6 +405,8 @@ private fun AdminTabBody(
     registrationsState: UiState<Map<String, List<MatchRegistration>>>,
     depositsState: UiState<List<DepositRequest>>,
     withdrawalsState: UiState<List<WithdrawalRequest>>,
+    ownerPayoutsState: UiState<List<OwnerPayout>>,
+    profitSummary: OwnerProfitSummary,
     usersState: UiState<List<UserProfile>>,
     settingsState: UiState<AppSettings>,
     isBusy: Boolean,
@@ -342,6 +420,7 @@ private fun AdminTabBody(
     onRejectWithdrawal: (WithdrawalRequest) -> Unit,
     onRequestWalletAdjust: (UserProfile) -> Unit,
     onSaveSettings: (AdminSettingsDraft) -> Unit,
+    onOpenProfitWithdraw: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     LazyColumn(
@@ -383,8 +462,9 @@ private fun AdminTabBody(
                 item {
                     AdminEarningsOverviewCard(
                         matchesState = matchesState,
-                        depositsState = depositsState,
-                        withdrawalsState = withdrawalsState
+                        withdrawalsState = withdrawalsState,
+                        profitSummary = profitSummary,
+                        onWithdrawProfitClick = onOpenProfitWithdraw
                     )
                 }
                 item {
@@ -445,6 +525,24 @@ private fun AdminTabBody(
             }
 
             AdminTab.WITHDRAWALS -> {
+                item {
+                    OwnerProfitWithdrawalsSection(
+                        profitSummary = profitSummary,
+                        ownerPayoutsState = ownerPayoutsState,
+                        onWithdrawProfitClick = onOpenProfitWithdraw
+                    )
+                }
+                item {
+                    HorizontalDivider(color = ArenaSlateBorder, thickness = 1.dp)
+                }
+                item {
+                    Text(
+                        text = "Player Withdrawal Requests",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = BlazeOrange,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
                 when (withdrawalsState) {
                     is UiState.Loading -> item { CircularProgressIndicator(color = BlazeOrange) }
                     is UiState.Error -> item { ErrorBannerCard(withdrawalsState.message) }
@@ -739,21 +837,15 @@ private fun AdminPlayerCard(
 @Composable
 private fun AdminEarningsOverviewCard(
     matchesState: UiState<List<TournamentMatch>>,
-    depositsState: UiState<List<DepositRequest>>,
-    withdrawalsState: UiState<List<WithdrawalRequest>>
+    withdrawalsState: UiState<List<WithdrawalRequest>>,
+    profitSummary: OwnerProfitSummary,
+    onWithdrawProfitClick: () -> Unit
 ) {
-    val approvedDeposits = (depositsState as? UiState.Success)?.data
-        ?.filter { it.status == "Approved" }
-        ?.sumOf { it.amount } ?: 0L
-    val paidWithdrawals = (withdrawalsState as? UiState.Success)?.data
-        ?.filter { it.status == "Paid" }
-        ?.sumOf { it.resolvedNetPayout } ?: 0L
     val feeRevenue = (withdrawalsState as? UiState.Success)?.data
         ?.filter { it.status != "Rejected" }
         ?.sumOf { it.feeAmount } ?: 0L
     val entryRevenue = (matchesState as? UiState.Success)?.data
         ?.sumOf { it.entry * it.joinedCount } ?: 0L
-    val netCashflow = approvedDeposits - paidWithdrawals
 
     Surface(
         color = ArenaSlateDark,
@@ -779,9 +871,9 @@ private fun AdminEarningsOverviewCard(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "Net: ${if (netCashflow >= 0) "+₹$netCashflow" else "-₹${-netCashflow}"}",
+                    text = "Available: ₹${profitSummary.availableProfit}",
                     style = MaterialTheme.typography.labelLarge,
-                    color = if (netCashflow >= 0) EmeraldWin else CrimsonReject,
+                    color = EmeraldWin,
                     fontWeight = FontWeight.ExtraBold
                 )
             }
@@ -789,8 +881,15 @@ private fun AdminEarningsOverviewCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                StatTile("UPI In", "₹$approvedDeposits", EmeraldWin, Modifier.weight(1f))
-                StatTile("Paid Out", "₹$paidWithdrawals", BlazeOrange, Modifier.weight(1f))
+                StatTile("UPI In", "₹${profitSummary.approvedDeposits}", EmeraldWin, Modifier.weight(1f))
+                StatTile("Players Paid", "₹${profitSummary.paidWithdrawals}", BlazeOrange, Modifier.weight(1f))
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                StatTile("Owner Withdrawn", "₹${profitSummary.ownerWithdrawn}", TextPrimary, Modifier.weight(1f))
+                StatTile("Available Profit", "₹${profitSummary.availableProfit}", EmeraldWin, Modifier.weight(1f))
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -799,8 +898,304 @@ private fun AdminEarningsOverviewCard(
                 StatTile("Entry Collected", "₹$entryRevenue", TextPrimary, Modifier.weight(1f))
                 StatTile("Withdrawal Fees", "₹$feeRevenue", EmeraldWin, Modifier.weight(1f))
             }
+            Button(
+                onClick = onWithdrawProfitClick,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = EmeraldWin,
+                    contentColor = ArenaObsidian
+                ),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .testTag("admin_withdraw_profit_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.AccountBalanceWallet,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "${stringResource(R.string.admin_withdraw_profit_button)} (₹${profitSummary.availableProfit})",
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun OwnerProfitWithdrawalsSection(
+    profitSummary: OwnerProfitSummary,
+    ownerPayoutsState: UiState<List<OwnerPayout>>,
+    onWithdrawProfitClick: () -> Unit
+) {
+    Surface(
+        color = ArenaSlateDark,
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(1.dp, EmeraldWin.copy(alpha = 0.45f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("admin_owner_payouts_section")
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.admin_owner_payouts_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = EmeraldWin,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Available: ₹${profitSummary.availableProfit} • Withdrawn: ₹${profitSummary.ownerWithdrawn}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                }
+            }
+
+            Button(
+                onClick = onWithdrawProfitClick,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = EmeraldWin,
+                    contentColor = ArenaObsidian
+                ),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .testTag("admin_tab_withdraw_profit_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.AccountBalanceWallet,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = stringResource(R.string.admin_withdraw_profit_button),
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            when (ownerPayoutsState) {
+                is UiState.Loading -> {
+                    CircularProgressIndicator(color = EmeraldWin, modifier = Modifier.size(24.dp))
+                }
+                is UiState.Error -> {
+                    ErrorBannerCard(ownerPayoutsState.message)
+                }
+                is UiState.Success -> {
+                    if (ownerPayoutsState.data.isEmpty()) {
+                        Text(
+                            text = "No owner profit withdrawals recorded yet.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted
+                        )
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            ownerPayoutsState.data.take(10).forEach { payout ->
+                                Surface(
+                                    color = ArenaSlateSurface,
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = BorderStroke(1.dp, ArenaSlateBorder),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(12.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "₹${payout.amount} -> ${payout.upiId}",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                color = EmeraldWin,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            if (payout.note.isNotBlank()) {
+                                                Text(
+                                                    text = payout.note,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = TextPrimary
+                                                )
+                                            }
+                                            Text(
+                                                text = formatTimestampShort(payout.createdAt),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = TextSecondary
+                                            )
+                                        }
+                                        StatusBadge(status = "Paid")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OwnerProfitWithdrawDialog(
+    availableProfit: Long,
+    defaultUpiId: String,
+    defaultUpiName: String,
+    isBusy: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (amountText: String, upiId: String, note: String) -> Unit
+) {
+    val context = LocalContext.current
+    var amountText by rememberSaveable { mutableStateOf("") }
+    var upiId by rememberSaveable(defaultUpiId) { mutableStateOf(defaultUpiId) }
+    var note by rememberSaveable { mutableStateOf("") }
+    var localFeedback by remember { mutableStateOf("") }
+
+    val parsedAmount = amountText.trim().toLongOrNull()
+    val hasValidUpi = upiId.trim().length >= 3 && upiId.trim().contains("@")
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = ArenaSlateDark,
+        title = {
+            Text(
+                text = "Withdraw Organizer Profit",
+                color = EmeraldWin,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Available Profit: ₹$availableProfit",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextPrimary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    if (availableProfit > 0L) {
+                        TextButton(
+                            onClick = { amountText = availableProfit.toString() },
+                            modifier = Modifier.testTag("owner_withdraw_max_button")
+                        ) {
+                            Text("Max ₹$availableProfit", color = BlazeOrange, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = amountText,
+                    onValueChange = { amountText = it.filter { ch -> ch.isDigit() }.take(7) },
+                    label = { Text("Amount (₹)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("owner_withdraw_amount_input")
+                )
+                OutlinedTextField(
+                    value = upiId,
+                    onValueChange = { upiId = it.take(80) },
+                    label = { Text("Destination UPI ID") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("owner_withdraw_upi_input")
+                )
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it.take(100) },
+                    label = { Text("Note (Optional, e.g. Weekly Profit)") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("owner_withdraw_note_input")
+                )
+                if (hasValidUpi && parsedAmount != null && parsedAmount > 0L) {
+                    OutlinedButton(
+                        onClick = {
+                            val uri = buildUpiPaymentUri(
+                                upiId = upiId.trim(),
+                                upiName = defaultUpiName,
+                                amount = parsedAmount
+                            )
+                            try {
+                                context.startActivity(
+                                    Intent.createChooser(
+                                        Intent(Intent.ACTION_VIEW, Uri.parse(uri)),
+                                        "Transfer via UPI App"
+                                    )
+                                )
+                            } catch (_: ActivityNotFoundException) {
+                                localFeedback = "No UPI app found on this device. Record payout manually below."
+                            }
+                        },
+                        border = BorderStroke(1.dp, BlazeOrange),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .testTag("owner_withdraw_open_upi_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.OpenInNew,
+                            contentDescription = null,
+                            tint = BlazeOrange,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Open UPI App for ₹$parsedAmount", color = BlazeOrange)
+                    }
+                }
+                if (localFeedback.isNotBlank()) {
+                    Text(
+                        text = localFeedback,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = BlazeOrange
+                    )
+                }
+                Text(
+                    text = "Records an immutable payout entry in Firestore so Available Profit stays accurate.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextSecondary
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = !isBusy,
+                onClick = { onConfirm(amountText, upiId, note) },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = EmeraldWin,
+                    contentColor = ArenaObsidian
+                ),
+                modifier = Modifier.testTag("owner_withdraw_confirm_button")
+            ) {
+                Text("Record & Withdraw", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = TextSecondary)
+            }
+        }
+    )
 }
 
 @Composable

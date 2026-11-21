@@ -8,6 +8,7 @@ import com.example.data.model.AppSettings
 import com.example.data.model.DepositRequest
 import com.example.data.model.MatchRegistration
 import com.example.data.model.MatchStatus
+import com.example.data.model.OwnerPayout
 import com.example.data.model.TournamentMatch
 import com.example.data.model.UiState
 import com.example.data.model.UserProfile
@@ -81,6 +82,10 @@ class AdminViewModel(
 
     val settingsState: StateFlow<UiState<AppSettings>> = repository.observeAppSettings(currentUserId)
         .toUiState("settings")
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), UiState.Loading)
+
+    val ownerPayoutsState: StateFlow<UiState<List<OwnerPayout>>> = repository.observeOwnerPayouts(currentUserId)
+        .toUiState("owner payouts")
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), UiState.Loading)
 
     fun createMatch(
@@ -166,6 +171,29 @@ class AdminViewModel(
         }
         runAction("Updated ${user.ign}'s wallet!") {
             repository.adjustUserWalletAtomic(user.userId, delta).also {
+                if (it.isSuccess) onSuccess()
+            }
+        }
+    }
+
+    fun withdrawOwnerProfit(
+        amountText: String,
+        upiId: String,
+        note: String,
+        availableProfit: Long,
+        onSuccess: () -> Unit
+    ) {
+        val amount = amountText.trim().toLongOrNull()
+        if (amount == null || amount <= 0L) {
+            _events.tryEmit("Enter a valid positive profit withdrawal amount.")
+            return
+        }
+        if (availableProfit > 0L && amount > availableProfit) {
+            _events.tryEmit("Available organizer profit is ₹$availableProfit.")
+            return
+        }
+        runAction("₹$amount profit withdrawal recorded!") {
+            repository.recordOwnerProfitWithdrawal(amount, upiId, note).also {
                 if (it.isSuccess) onSuccess()
             }
         }

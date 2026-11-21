@@ -178,3 +178,14 @@ data class WithdrawalRequest(
     val resolvedNetPayout: Long
         get() = if (netPayout > 0L) netPayout else (amount - feeAmount).coerceAtLeast(0L)
 }
+
+@Keep
+@IgnoreExtraProperties
+data class OwnerPayout(
+    @DocumentId val id: String = "",
+    val adminUid: String = "",
+    val amount: Long = 0L,
+    val upiId: String = "",
+    val note: String = "",
+    @ServerTimestamp val createdAt: Timestamp? = null
+)
