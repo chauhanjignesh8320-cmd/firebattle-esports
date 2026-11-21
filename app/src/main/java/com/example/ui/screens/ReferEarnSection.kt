@@ -23,20 +23,24 @@ import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.GroupAdd
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -48,12 +52,14 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.data.model.AppSettings
 import com.example.data.model.ReferralRecord
 import com.example.data.model.UiState
 import com.example.data.model.UserProfile
+import com.example.data.model.buildReferralInviteLink
 import com.example.ui.components.EmptyArenaState
 import com.example.ui.components.ErrorBannerCard
 import com.example.ui.components.StatTile
@@ -76,6 +82,7 @@ fun ReferEarnSection(
     profile: UserProfile,
     settingsState: UiState<AppSettings>,
     referralsState: UiState<List<ReferralRecord>>,
+    initialReferralCode: String = "",
     isBusy: Boolean,
     onApplyReferralCode: (code: String, onSuccess: () -> Unit) -> Unit,
     onCopyFeedback: (String) -> Unit,
@@ -85,7 +92,12 @@ fun ReferEarnSection(
     val clipboard = LocalClipboardManager.current
     val settings = (settingsState as? UiState.Success)?.data ?: AppSettings()
     val bonus = settings.referralBonus
-    var friendCodeInput by rememberSaveable { mutableStateOf("") }
+    val inviteLink = remember(settings.appDownloadUrl, profile.referralCode) {
+        buildReferralInviteLink(settings.appDownloadUrl, profile.referralCode)
+    }
+    var friendCodeInput by rememberSaveable(initialReferralCode) {
+        mutableStateOf(initialReferralCode.uppercase().filter { it.isLetterOrDigit() }.take(16))
+    }
 
     val fieldColors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = BlazeOrange,
@@ -163,7 +175,7 @@ fun ReferEarnSection(
 
                         Text(
                             text = if (bonus > 0L) {
-                                "Share your invite code with your Free Fire MAX & BGMI squad. When a friend applies your code, both wallets receive ₹$bonus instantly!"
+                                "Share your app link & code with your Free Fire MAX & BGMI squad. When a friend downloads & applies your code, both wallets get ₹$bonus!"
                             } else {
                                 "The tournament organizer has temporarily paused referral rewards. Your past earnings remain safely in your wallet."
                             },
@@ -193,7 +205,7 @@ fun ReferEarnSection(
             }
         }
 
-        // Player's Own Referral Code Card
+        // Player's Own Referral Code & Link Card
         item {
             Surface(
                 color = ArenaSlateDark,
@@ -226,21 +238,75 @@ fun ReferEarnSection(
                         border = BorderStroke(1.dp, EmeraldWin.copy(alpha = 0.45f)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column(
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 14.dp, horizontal = 16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
                                 text = profile.referralCode.ifBlank { "GENERATING..." },
-                                style = MaterialTheme.typography.headlineMedium,
+                                style = MaterialTheme.typography.headlineSmall,
                                 fontFamily = JetBrainsMonoFamily,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = EmeraldWin,
                                 modifier = Modifier.testTag("my_referral_code_text")
                             )
+                            IconButton(
+                                onClick = {
+                                    val code = profile.referralCode
+                                    if (code.isNotBlank()) {
+                                        clipboard.setText(AnnotatedString(code))
+                                        onCopyFeedback("Referral code $code copied!")
+                                    }
+                                },
+                                enabled = profile.referralCode.isNotBlank(),
+                                modifier = Modifier
+                                    .minimumInteractiveComponentSize()
+                                    .testTag("copy_referral_code_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.ContentCopy,
+                                    contentDescription = stringResource(R.string.refer_copy_code),
+                                    tint = EmeraldWin
+                                )
+                            }
                         }
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Filled.Link,
+                            contentDescription = "Your App Referral Link",
+                            tint = EmeraldWin,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = stringResource(R.string.refer_your_link_title),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = TextPrimary
+                        )
+                    }
+
+                    Surface(
+                        color = ArenaObsidian,
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, ArenaSlateBorder),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = inviteLink,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = JetBrainsMonoFamily,
+                            color = BlazeOrange,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .padding(12.dp)
+                                .testTag("my_referral_link_text")
+                        )
                     }
 
                     Row(
@@ -249,10 +315,9 @@ fun ReferEarnSection(
                     ) {
                         OutlinedButton(
                             onClick = {
-                                val code = profile.referralCode
-                                if (code.isNotBlank()) {
-                                    clipboard.setText(AnnotatedString(code))
-                                    onCopyFeedback("Referral code $code copied!")
+                                if (profile.referralCode.isNotBlank()) {
+                                    clipboard.setText(AnnotatedString(inviteLink))
+                                    onCopyFeedback("App referral link copied!")
                                 }
                             },
                             enabled = profile.referralCode.isNotBlank(),
@@ -262,7 +327,7 @@ fun ReferEarnSection(
                             modifier = Modifier
                                 .weight(1f)
                                 .heightIn(min = 48.dp)
-                                .testTag("copy_referral_code_button")
+                                .testTag("copy_referral_link_button")
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.ContentCopy,
@@ -270,7 +335,7 @@ fun ReferEarnSection(
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text(stringResource(R.string.refer_copy_code), fontWeight = FontWeight.Bold)
+                            Text(stringResource(R.string.refer_copy_link), fontWeight = FontWeight.Bold)
                         }
 
                         Button(
@@ -278,14 +343,15 @@ fun ReferEarnSection(
                                 val code = profile.referralCode
                                 if (code.isNotBlank()) {
                                     val inviteText = buildString {
-                                        append("Join me on Firebattle Esports! ")
-                                        append("Play Free Fire MAX & BGMI tournaments and win cash prizes. ")
-                                        append("Use my referral code $code")
+                                        append("🔥 Join me on Firebattle Esports!\n")
+                                        append("Play Free Fire MAX & BGMI tournaments and win daily cash prizes.\n\n")
+                                        append("📲 Download App:\n")
+                                        append(inviteLink)
+                                        append("\n\n🎁 Referral Code: $code\n")
                                         if (bonus > 0L) {
-                                            append(" to get ₹$bonus instant wallet bonus!")
-                                        } else {
-                                            append(" when signing up!")
+                                            append("Apply this code to get ₹$bonus instant wallet bonus!\n")
                                         }
+                                        append("Already installed? Tap: firebattle://refer?code=$code")
                                     }
                                     val sendIntent = Intent(Intent.ACTION_SEND).apply {
                                         type = "text/plain"
@@ -456,7 +522,7 @@ fun ReferEarnSection(
                     item {
                         EmptyArenaState(
                             title = "No Friends Joined Yet",
-                            subtitle = "Tap Share Invite above and send your referral code on WhatsApp or Discord!"
+                            subtitle = "Tap Share Invite above and send your referral link & code on WhatsApp!"
                         )
                     }
                 } else {

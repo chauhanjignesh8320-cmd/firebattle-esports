@@ -109,7 +109,7 @@ fun AdminDashboardScreen(
     onMarkWithdrawalPaid: (String) -> Unit,
     onRejectWithdrawal: (WithdrawalRequest) -> Unit,
     onAdjustUserWallet: (UserProfile, String, () -> Unit) -> Unit,
-    onSaveSettings: (String, String, String, String) -> Unit,
+    onSaveSettings: (String, String, String, String, String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(AdminTab.MATCHES) }
@@ -339,7 +339,7 @@ private fun AdminTabBody(
     onMarkWithdrawalPaid: (String) -> Unit,
     onRejectWithdrawal: (WithdrawalRequest) -> Unit,
     onRequestWalletAdjust: (UserProfile) -> Unit,
-    onSaveSettings: (String, String, String, String) -> Unit,
+    onSaveSettings: (String, String, String, String, String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     LazyColumn(
@@ -719,13 +719,22 @@ private fun AdminPlayerCard(
 private fun AdminSettingsCard(
     initialSettings: AppSettings,
     isBusy: Boolean,
-    onSave: (upiId: String, upiName: String, adminPhone: String, referralBonusText: String) -> Unit
+    onSave: (
+        upiId: String,
+        upiName: String,
+        adminPhone: String,
+        referralBonusText: String,
+        appDownloadUrl: String
+    ) -> Unit
 ) {
     var upiId by rememberSaveable(initialSettings.upiId) { mutableStateOf(initialSettings.upiId) }
     var upiName by rememberSaveable(initialSettings.upiName) { mutableStateOf(initialSettings.upiName) }
     var adminPhone by rememberSaveable(initialSettings.adminPhone) { mutableStateOf(initialSettings.adminPhone) }
     var referralBonus by rememberSaveable(initialSettings.referralBonus) {
         mutableStateOf(initialSettings.referralBonus.toString())
+    }
+    var appDownloadUrl by rememberSaveable(initialSettings.appDownloadUrl) {
+        mutableStateOf(initialSettings.appDownloadUrl)
     }
 
     val fieldColors = OutlinedTextFieldDefaults.colors(
@@ -792,8 +801,19 @@ private fun AdminSettingsCard(
                     .fillMaxWidth()
                     .testTag("settings_referral_bonus_input")
             )
+            OutlinedTextField(
+                value = appDownloadUrl,
+                onValueChange = { appDownloadUrl = it.take(300) },
+                label = { Text("App Download / Referral Link (https://...)") },
+                singleLine = true,
+                colors = fieldColors,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("settings_app_download_url_input")
+            )
             Button(
-                onClick = { onSave(upiId, upiName, adminPhone, referralBonus) },
+                onClick = { onSave(upiId, upiName, adminPhone, referralBonus, appDownloadUrl) },
                 enabled = !isBusy,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = EmeraldWin,

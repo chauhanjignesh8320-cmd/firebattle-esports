@@ -66,6 +66,7 @@ fun ProfileSetupScreen(
     existingProfile: UserProfile?,
     suggestedName: String,
     email: String,
+    initialReferralCode: String = "",
     isBusy: Boolean,
     onSaveProfile: (ign: String, gameUid: String, phone: String, referralCode: String) -> Unit,
     onLogout: () -> Unit,
@@ -74,7 +75,9 @@ fun ProfileSetupScreen(
     var ign by rememberSaveable { mutableStateOf(existingProfile?.ign ?: suggestedName) }
     var gameUid by rememberSaveable { mutableStateOf(existingProfile?.gameUid ?: "") }
     var phone by rememberSaveable { mutableStateOf(existingProfile?.phone ?: "") }
-    var friendCode by rememberSaveable { mutableStateOf("") }
+    var friendCode by rememberSaveable(initialReferralCode) {
+        mutableStateOf(initialReferralCode.uppercase().filter { it.isLetterOrDigit() }.take(16))
+    }
     var localError by rememberSaveable { mutableStateOf<String?>(null) }
 
     Box(

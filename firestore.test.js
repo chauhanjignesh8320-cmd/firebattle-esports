@@ -427,14 +427,23 @@ test("Refer & Earn enforces unique code claim, single redemption, non-self refer
   const bobDb = testEnv.authenticatedContext(BOB_UID, { email: "bob@test.com", email_verified: true }).firestore();
   const charlieDb = testEnv.authenticatedContext("charlie_789", { email: "c@test.com", email_verified: true }).firestore();
 
-  // Admin sets referralBonus = 25
+  // Admin sets referralBonus = 25 and valid appDownloadUrl
   await assertSucceeds(
     adminDb.collection("settings").doc("app").set({
       upiId: "firebattle@upi",
       upiName: "Firebattle Esports",
       adminPhone: "9876543210",
       referralBonus: 25,
+      appDownloadUrl: "https://github.com/chauhanjignesh8320-cmd/firebattle-esports/releases/latest/download/Firebattle.apk",
       updatedAt: pastDate(10000),
+    })
+  );
+
+  // Invalid appDownloadUrl scheme is rejected
+  await assertFails(
+    adminDb.collection("settings").doc("app").update({
+      appDownloadUrl: "javascript:alert(1)",
+      updatedAt: pastDate(9000),
     })
   );
 

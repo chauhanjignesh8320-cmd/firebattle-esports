@@ -3,6 +3,7 @@ package com.example.data.firebase
 import android.content.Context
 import com.example.R
 import com.example.data.model.AppSettings
+import com.example.data.model.DEFAULT_APP_DOWNLOAD_URL
 import com.example.data.model.DepositRequest
 import com.example.data.model.MatchRegistration
 import com.example.data.model.MatchStatus
@@ -102,8 +103,13 @@ class FirebattleRepository(
             db.collection("settings").document("app")
                 .snapshots()
                 .map { snapshot ->
-                    snapshot.toObject(AppSettings::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
+                    val parsed = snapshot.toObject(AppSettings::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
                         ?: AppSettings()
+                    if (parsed.appDownloadUrl.isBlank()) {
+                        parsed.copy(appDownloadUrl = DEFAULT_APP_DOWNLOAD_URL)
+                    } else {
+                        parsed
+                    }
                 }
                 .catch { error -> handleStreamError(error, OperationType.GET, path, uid) }
         )
@@ -661,6 +667,7 @@ class FirebattleRepository(
                         "upiName" to "Firebattle Esports",
                         "adminPhone" to "9876543210",
                         "referralBonus" to 10L,
+                        "appDownloadUrl" to DEFAULT_APP_DOWNLOAD_URL,
                         "updatedAt" to FieldValue.serverTimestamp()
                     )
                 ).await()
@@ -942,11 +949,13 @@ class FirebattleRepository(
         upiId: String,
         upiName: String,
         adminPhone: String,
-        referralBonus: Long = 10L
+        referralBonus: Long = 10L,
+        appDownloadUrl: String = DEFAULT_APP_DOWNLOAD_URL
     ): Result<Unit> {
         val cleanUpiId = upiId.trim()
         val cleanUpiName = upiName.trim()
         val cleanPhone = adminPhone.trim()
+        val cleanDownloadUrl = appDownloadUrl.trim().ifBlank { DEFAULT_APP_DOWNLOAD_URL }
         val path = "settings/app"
         return try {
             requireUserId()
@@ -954,6 +963,12 @@ class FirebattleRepository(
             require(cleanUpiName.length in 2..60) { "Receiver Name must be 2 to 60 characters." }
             require(PHONE_REGEX.matches(cleanPhone)) { "Admin phone must be 10 digits." }
             require(referralBonus in 0L..1000L) { "Referral bonus must be ₹0 to ₹1,000." }
+            require(
+                cleanDownloadUrl.length <= 300 &&
+                    (cleanDownloadUrl.startsWith("https://") || cleanDownloadUrl.startsWith("http://"))
+            ) {
+                "App Download Link must start with https:// or http:// (max 300 chars)."
+            }
 
             db.collection("settings").document("app").set(
                 mapOf(
@@ -961,6 +976,7 @@ class FirebattleRepository(
                     "upiName" to cleanUpiName,
                     "adminPhone" to cleanPhone,
                     "referralBonus" to referralBonus,
+                    "appDownloadUrl" to cleanDownloadUrl,
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
             ).await()

@@ -1,5 +1,6 @@
 package com.example
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -55,19 +56,42 @@ import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+    private var deepLinkReferralCode by mutableStateOf("")
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        deepLinkReferralCode = extractReferralCodeFromIntent(intent)
         setContent {
             FirebattleTheme {
-                AppContent()
+                AppContent(initialReferralCode = deepLinkReferralCode)
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val extracted = extractReferralCodeFromIntent(intent)
+        if (extracted.isNotBlank()) {
+            deepLinkReferralCode = extracted
+        }
+    }
+
+    private fun extractReferralCodeFromIntent(intent: Intent?): String {
+        val uri = intent?.data ?: return ""
+        if (!uri.scheme.equals("firebattle", ignoreCase = true) ||
+            !uri.host.equals("refer", ignoreCase = true)
+        ) {
+            return ""
+        }
+        val raw = uri.getQueryParameter("code") ?: uri.getQueryParameter("ref") ?: ""
+        return raw.trim().uppercase().filter { it.isLetterOrDigit() }.take(16)
     }
 }
 
 @Composable
-fun AppContent() {
+fun AppContent(initialReferralCode: String = "") {
     var currentUser by remember { mutableStateOf(Firebase.auth.currentUser) }
     DisposableEffect(Unit) {
         val listener = FirebaseAuth.AuthStateListener { auth ->
@@ -88,7 +112,8 @@ fun AppContent() {
             AuthenticatedArenaShell(
                 currentUserId = uid,
                 userDisplayName = user.displayName ?: "",
-                userEmail = user.email ?: ""
+                userEmail = user.email ?: "",
+                initialReferralCode = initialReferralCode
             )
         }
     }
@@ -98,7 +123,8 @@ fun AppContent() {
 private fun AuthenticatedArenaShell(
     currentUserId: String,
     userDisplayName: String,
-    userEmail: String
+    userEmail: String,
+    initialReferralCode: String = ""
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -197,6 +223,7 @@ private fun AuthenticatedArenaShell(
                         existingProfile = null,
                         suggestedName = userDisplayName.take(24),
                         email = userEmail,
+                        initialReferralCode = initialReferralCode,
                         isBusy = playerBusy,
                         onSaveProfile = { ign, gameUid, phone, referralCode ->
                             playerViewModel.saveProfile(
@@ -294,8 +321,8 @@ private fun AuthenticatedArenaShell(
                                 onAdjustUserWallet = { target, delta, onSuccess ->
                                     adminViewModel.adjustUserWallet(target, delta, onSuccess)
                                 },
-                                onSaveSettings = { upiId, upiName, adminPhone, referralBonusText ->
-                                    adminViewModel.saveSettings(upiId, upiName, adminPhone, referralBonusText)
+                                onSaveSettings = { upiId, upiName, adminPhone, referralBonusText, appDownloadUrl ->
+                                    adminViewModel.saveSettings(upiId, upiName, adminPhone, referralBonusText, appDownloadUrl)
                                 }
                             )
                         } else if (profile != null) {
@@ -312,6 +339,7 @@ private fun AuthenticatedArenaShell(
                                 depositsState = depositsState,
                                 withdrawalsState = withdrawalsState,
                                 referralsState = referralsState,
+                                initialReferralCode = initialReferralCode,
                                 isBusy = playerBusy,
                                 onJoinMatch = { match ->
                                     playerViewModel.joinMatch(match, profile)

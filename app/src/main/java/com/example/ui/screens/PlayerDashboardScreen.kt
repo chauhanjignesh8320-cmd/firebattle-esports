@@ -62,6 +62,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -119,6 +120,7 @@ fun PlayerDashboardScreen(
     depositsState: UiState<List<DepositRequest>>,
     withdrawalsState: UiState<List<WithdrawalRequest>>,
     referralsState: UiState<List<ReferralRecord>>,
+    initialReferralCode: String = "",
     isBusy: Boolean,
     onJoinMatch: (TournamentMatch) -> Unit,
     onSubmitDeposit: (amountText: String, utr: String, onSuccess: () -> Unit) -> Unit,
@@ -131,6 +133,12 @@ fun PlayerDashboardScreen(
     var selectedTab by rememberSaveable { mutableStateOf(PlayerTab.TOURNAMENTS) }
     var showEditProfileDialog by rememberSaveable { mutableStateOf(false) }
     var pendingJoinMatch by remember { mutableStateOf<TournamentMatch?>(null) }
+
+    LaunchedEffect(initialReferralCode) {
+        if (initialReferralCode.isNotBlank() && profile.referredByCode.isBlank()) {
+            selectedTab = PlayerTab.REFER
+        }
+    }
 
     BackHandler(enabled = selectedTab != PlayerTab.TOURNAMENTS) {
         selectedTab = PlayerTab.TOURNAMENTS
@@ -183,6 +191,7 @@ fun PlayerDashboardScreen(
                         depositsState = depositsState,
                         withdrawalsState = withdrawalsState,
                         referralsState = referralsState,
+                        initialReferralCode = initialReferralCode,
                         isBusy = isBusy,
                         onEditProfile = { showEditProfileDialog = true },
                         onRequestJoin = { pendingJoinMatch = it },
@@ -238,6 +247,7 @@ fun PlayerDashboardScreen(
                     depositsState = depositsState,
                     withdrawalsState = withdrawalsState,
                     referralsState = referralsState,
+                    initialReferralCode = initialReferralCode,
                     isBusy = isBusy,
                     onEditProfile = { showEditProfileDialog = true },
                     onRequestJoin = { pendingJoinMatch = it },
@@ -313,6 +323,7 @@ private fun PlayerTabContent(
     depositsState: UiState<List<DepositRequest>>,
     withdrawalsState: UiState<List<WithdrawalRequest>>,
     referralsState: UiState<List<ReferralRecord>>,
+    initialReferralCode: String = "",
     isBusy: Boolean,
     onEditProfile: () -> Unit,
     onRequestJoin: (TournamentMatch) -> Unit,
@@ -348,6 +359,7 @@ private fun PlayerTabContent(
             profile = profile,
             settingsState = settingsState,
             referralsState = referralsState,
+            initialReferralCode = initialReferralCode,
             isBusy = isBusy,
             onApplyReferralCode = onApplyReferralCode,
             onCopyFeedback = onCopyFeedback,

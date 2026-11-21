@@ -52,6 +52,17 @@ enum class MatchStatus(val wireValue: String) {
     }
 }
 
+const val DEFAULT_APP_DOWNLOAD_URL =
+    "https://github.com/chauhanjignesh8320-cmd/firebattle-esports/releases/latest/download/Firebattle.apk"
+
+fun buildReferralInviteLink(downloadUrl: String, referralCode: String): String {
+    val cleanUrl = downloadUrl.trim().ifBlank { DEFAULT_APP_DOWNLOAD_URL }
+    val cleanCode = referralCode.trim().uppercase()
+    if (cleanCode.isBlank()) return cleanUrl
+    val separator = if ('?' in cleanUrl) "&" else "?"
+    return "$cleanUrl${separator}ref=$cleanCode"
+}
+
 @Keep
 @IgnoreExtraProperties
 data class AppSettings(
@@ -60,6 +71,7 @@ data class AppSettings(
     val upiName: String = "Firebattle Esports",
     val adminPhone: String = "9876543210",
     val referralBonus: Long = 10L,
+    val appDownloadUrl: String = DEFAULT_APP_DOWNLOAD_URL,
     @ServerTimestamp val updatedAt: Timestamp? = null
 )
 

@@ -158,14 +158,20 @@ class AdminViewModel(
         }
     }
 
-    fun saveSettings(upiId: String, upiName: String, adminPhone: String, referralBonusText: String) {
+    fun saveSettings(
+        upiId: String,
+        upiName: String,
+        adminPhone: String,
+        referralBonusText: String,
+        appDownloadUrl: String
+    ) {
         val bonus = referralBonusText.trim().ifEmpty { "0" }.toLongOrNull()
         if (bonus == null) {
             _events.tryEmit("Enter a valid numeric referral bonus (₹0 - ₹1000).")
             return
         }
         runAction("Settings saved to Firestore!") {
-            repository.saveAppSettings(upiId, upiName, adminPhone, bonus)
+            repository.saveAppSettings(upiId, upiName, adminPhone, bonus, appDownloadUrl)
         }
     }
 

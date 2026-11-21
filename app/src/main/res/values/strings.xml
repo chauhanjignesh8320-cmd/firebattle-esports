@@ -30,7 +30,9 @@
     <string name="save_settings">SAVE SETTINGS TO FIRESTORE</string>
     <string name="refer_earn_badge">REFER &amp; EARN</string>
     <string name="refer_your_code_title">Your Referral Invite Code</string>
+    <string name="refer_your_link_title">Your App Referral Link</string>
     <string name="refer_copy_code">Copy Code</string>
+    <string name="refer_copy_link">Copy Link</string>
     <string name="refer_share_invite">Share Invite</string>
     <string name="refer_apply_title">Have a Friend\'s Code?</string>
     <string name="refer_apply_button">Apply Referral Code</string>

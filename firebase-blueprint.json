@@ -38,6 +38,10 @@
           "type": "integer",
           "description": "Referral reward in INR credited to both referrer and invited player."
         },
+        "appDownloadUrl": {
+          "type": "string",
+          "description": "Direct app download or website link shared inside player referral invites."
+        },
         "updatedAt": {
           "type": "string",
           "format": "date-time",
