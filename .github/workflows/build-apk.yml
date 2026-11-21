@@ -60,10 +60,29 @@ jobs:
             keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
 
+      - name: Check or restore Firebase config (google-services.json)
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ ! -f app/google-services.json ]; then
+            if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+              printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
+              echo "Restored app/google-services.json from GOOGLE_SERVICES_JSON secret."
+            else
+              echo "=== ERROR: app/google-services.json MISSING ==="
+              echo "AI Studio's Push to GitHub excludes app/google-services.json."
+              echo "Add a GitHub Actions Secret named GOOGLE_SERVICES_JSON containing your app/google-services.json file, or commit app/google-services.json directly in GitHub."
+              ls -la app/
+              exit 1
+            fi
+          else
+            echo "Found app/google-services.json in repository."
+          fi
+
       - name: Build Debug APK
         run: |
           set -o pipefail
-          if ! gradle :app:assembleDebug --no-daemon --no-configuration-cache --console=plain -Dorg.gradle.jvmargs="-Xmx3g -Dfile.encoding=UTF-8" 2>&1 | tee gradle_build.log; then
+          if ! gradle :app:assembleDebug --no-daemon --no-configuration-cache --no-build-cache --console=plain -Dorg.gradle.jvmargs="-Xmx3g -Dfile.encoding=UTF-8" 2>&1 | tee gradle_build.log; then
             echo "=== EXACT GRADLE ERROR SUMMARY ==="
             grep -A 30 "FAILURE:" gradle_build.log || tail -n 40 gradle_build.log
             exit 1
