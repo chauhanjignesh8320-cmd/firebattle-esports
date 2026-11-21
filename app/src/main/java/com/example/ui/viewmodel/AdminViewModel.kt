@@ -91,6 +91,8 @@ class AdminViewModel(
     fun createMatch(
         title: String,
         game: String,
+        matchMode: String,
+        teamFormat: String,
         matchTime: String,
         mapName: String,
         entryText: String,
@@ -110,7 +112,18 @@ class AdminViewModel(
         }
 
         runAction("Tournament published live!") {
-            repository.createMatch(title, game, matchTime, mapName, entry, perKill, prize, slots).also {
+            repository.createMatch(
+                title = title,
+                game = game,
+                matchMode = matchMode,
+                teamFormat = teamFormat,
+                matchTime = matchTime,
+                mapName = mapName,
+                entry = entry,
+                perKill = perKill,
+                prize = prize,
+                slots = slots
+            ).also {
                 if (it.isSuccess) onSuccess()
             }
         }

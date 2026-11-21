@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -44,8 +46,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.data.model.GameTitle
+import com.example.data.model.MatchMode
 import com.example.data.model.MatchRegistration
 import com.example.data.model.MatchStatus
+import com.example.data.model.TeamFormat
 import com.example.data.model.TournamentMatch
 import com.example.ui.components.StatusBadge
 import com.example.ui.theme.ArenaObsidian
@@ -56,8 +60,20 @@ import com.example.ui.theme.BlazeOrange
 import com.example.ui.theme.BlazeOrangeContainer
 import com.example.ui.theme.CrimsonReject
 import com.example.ui.theme.EmeraldWin
+import com.example.ui.theme.EmeraldWinContainer
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+
+private data class MatchQuickPreset(
+    val chipLabel: String,
+    val mode: MatchMode,
+    val format: TeamFormat,
+    val entry: String,
+    val prize: String,
+    val perKill: String,
+    val slots: String,
+    val defaultMap: String
+)
 
 @Composable
 fun CreateTournamentCard(
@@ -65,6 +81,8 @@ fun CreateTournamentCard(
     onCreateMatch: (
         title: String,
         game: String,
+        matchMode: String,
+        teamFormat: String,
         time: String,
         mapName: String,
         entry: String,
@@ -76,13 +94,15 @@ fun CreateTournamentCard(
 ) {
     var title by rememberSaveable { mutableStateOf("") }
     var selectedGame by rememberSaveable { mutableStateOf(GameTitle.FREE_FIRE_MAX.label) }
+    var selectedMode by rememberSaveable { mutableStateOf(MatchMode.CUSTOM.label) }
+    var selectedFormat by rememberSaveable { mutableStateOf(TeamFormat.FULL_MAP.label) }
     var gameMenuExpanded by rememberSaveable { mutableStateOf(false) }
     var time by rememberSaveable { mutableStateOf("") }
     var mapName by rememberSaveable { mutableStateOf("") }
     var entry by rememberSaveable { mutableStateOf("") }
     var perKill by rememberSaveable { mutableStateOf("") }
     var prize by rememberSaveable { mutableStateOf("") }
-    var slots by rememberSaveable { mutableStateOf("") }
+    var slots by rememberSaveable { mutableStateOf("48") }
 
     val fieldColors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = BlazeOrange,
@@ -91,6 +111,14 @@ fun CreateTournamentCard(
         unfocusedContainerColor = ArenaSlateSurface,
         focusedTextColor = TextPrimary,
         unfocusedTextColor = TextPrimary
+    )
+
+    val presets = listOf(
+        MatchQuickPreset("1vs1 Lone Wolf", MatchMode.LONE_WOLF, TeamFormat.ONE_VS_ONE, "50", "80", "0", "2", "Iron Cage"),
+        MatchQuickPreset("2vs2 CS Duo", MatchMode.CLASH_SQUAD, TeamFormat.TWO_VS_TWO, "50", "160", "0", "4", "Bermuda CS"),
+        MatchQuickPreset("4vs4 CS Squad", MatchMode.CLASH_SQUAD, TeamFormat.FOUR_VS_FOUR, "50", "320", "10", "8", "Kalahari CS"),
+        MatchQuickPreset("₹20 Custom Room", MatchMode.CUSTOM, TeamFormat.FULL_MAP, "20", "650", "10", "48", "Bermuda"),
+        MatchQuickPreset("₹50 Pro Custom", MatchMode.CUSTOM, TeamFormat.FULL_MAP, "50", "1600", "25", "48", "Bermuda")
     )
 
     Surface(
@@ -110,32 +138,38 @@ fun CreateTournamentCard(
             )
 
             Text(
-                text = "Quick Profit Presets (Auto 25%+ Owner Margin)",
+                text = "Quick Mode & Profit Presets (1vs1 / 2vs2 / 4vs4 / Custom)",
                 style = MaterialTheme.typography.labelSmall,
                 color = TextSecondary
             )
 
-            Row(
+            LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                listOf(
-                    Triple("₹20 Solo", "20", "650") to "48",
-                    Triple("₹50 Pro", "50", "1600") to "48",
-                    Triple("₹100 VIP", "100", "3200") to "48"
-                ).forEach { (triplet, presetSlots) ->
-                    val (label, presetEntry, presetPrize) = triplet
+                items(presets) { preset ->
+                    val isSelected = selectedMode == preset.mode.label &&
+                        selectedFormat == preset.format.label &&
+                        entry == preset.entry &&
+                        slots == preset.slots
                     FilterChip(
-                        selected = entry == presetEntry && slots == presetSlots,
+                        selected = isSelected,
                         onClick = {
-                            entry = presetEntry
-                            prize = presetPrize
-                            slots = presetSlots
-                            if (perKill.isBlank()) perKill = (presetEntry.toLong() / 2L).toString()
-                            if (mapName.isBlank()) mapName = if (selectedGame == GameTitle.BGMI.label) "Erangel" else "Bermuda"
+                            selectedMode = preset.mode.label
+                            selectedFormat = preset.format.label
+                            entry = preset.entry
+                            prize = preset.prize
+                            perKill = preset.perKill
+                            slots = preset.slots
+                            mapName = if (selectedGame == GameTitle.BGMI.label && preset.mode == MatchMode.CUSTOM) {
+                                "Erangel"
+                            } else {
+                                preset.defaultMap
+                            }
                             if (time.isBlank()) time = "Tonight 9:00 PM"
+                            if (title.isBlank()) title = "${preset.chipLabel} #1"
                         },
-                        label = { Text(label) },
+                        label = { Text(preset.chipLabel) },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = EmeraldWin,
                             selectedLabelColor = ArenaObsidian,
@@ -146,10 +180,92 @@ fun CreateTournamentCard(
                 }
             }
 
+            Text(
+                text = "Match Mode",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextSecondary
+            )
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                items(MatchMode.entries) { modeOption ->
+                    val selected = selectedMode == modeOption.label
+                    FilterChip(
+                        selected = selected,
+                        onClick = {
+                            selectedMode = modeOption.label
+                            when (modeOption) {
+                                MatchMode.LONE_WOLF -> {
+                                    if (selectedFormat == TeamFormat.FULL_MAP.label || selectedFormat == TeamFormat.FOUR_VS_FOUR.label) {
+                                        selectedFormat = TeamFormat.ONE_VS_ONE.label
+                                        slots = TeamFormat.ONE_VS_ONE.defaultSlots.toString()
+                                    }
+                                    if (mapName.isBlank() || mapName == "Bermuda" || mapName == "Erangel") {
+                                        mapName = "Iron Cage"
+                                    }
+                                }
+                                MatchMode.CLASH_SQUAD -> {
+                                    if (selectedFormat == TeamFormat.FULL_MAP.label) {
+                                        selectedFormat = TeamFormat.FOUR_VS_FOUR.label
+                                        slots = TeamFormat.FOUR_VS_FOUR.defaultSlots.toString()
+                                    }
+                                    if (mapName.isBlank() || mapName == "Iron Cage") {
+                                        mapName = "Bermuda CS"
+                                    }
+                                }
+                                MatchMode.CUSTOM -> {
+                                    if (mapName.isBlank() || mapName == "Iron Cage") {
+                                        mapName = if (selectedGame == GameTitle.BGMI.label) "Erangel" else "Bermuda"
+                                    }
+                                }
+                            }
+                        },
+                        label = { Text(modeOption.label) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = BlazeOrange,
+                            selectedLabelColor = TextPrimary,
+                            containerColor = ArenaSlateSurface,
+                            labelColor = TextSecondary
+                        ),
+                        modifier = Modifier.testTag("admin_mode_chip_${modeOption.name.lowercase()}")
+                    )
+                }
+            }
+
+            Text(
+                text = "Team Format & Default Slots",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextSecondary
+            )
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                items(TeamFormat.entries) { formatOption ->
+                    val selected = selectedFormat == formatOption.label
+                    FilterChip(
+                        selected = selected,
+                        onClick = {
+                            selectedFormat = formatOption.label
+                            slots = formatOption.defaultSlots.toString()
+                        },
+                        label = { Text("${formatOption.label} (${formatOption.defaultSlots})") },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = EmeraldWin,
+                            selectedLabelColor = ArenaObsidian,
+                            containerColor = ArenaSlateSurface,
+                            labelColor = TextSecondary
+                        ),
+                        modifier = Modifier.testTag("admin_format_chip_${formatOption.name.lowercase()}")
+                    )
+                }
+            }
+
             OutlinedTextField(
                 value = title,
                 onValueChange = { title = it.take(80) },
-                label = { Text("Match Title (e.g. Solo Bermuda #1)") },
+                label = { Text("Match Title (e.g. $selectedMode $selectedFormat #1)") },
                 singleLine = true,
                 colors = fieldColors,
                 shape = RoundedCornerShape(12.dp),
@@ -205,7 +321,7 @@ fun CreateTournamentCard(
                 OutlinedTextField(
                     value = mapName,
                     onValueChange = { mapName = it.take(40) },
-                    label = { Text("Map (Bermuda)") },
+                    label = { Text("Map (Iron Cage / Bermuda)") },
                     singleLine = true,
                     colors = fieldColors,
                     shape = RoundedCornerShape(12.dp),
@@ -250,7 +366,7 @@ fun CreateTournamentCard(
                 OutlinedTextField(
                     value = slots,
                     onValueChange = { slots = it.filter { ch -> ch.isDigit() } },
-                    label = { Text("Slots (2..200)") },
+                    label = { Text("Player Slots (2..200)") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
                     colors = fieldColors,
@@ -278,7 +394,7 @@ fun CreateTournamentCard(
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Text(
-                            text = "Organizer Profit Estimator ($slotsNum Slots Full)",
+                            text = "Organizer Profit Estimator ($selectedMode • $selectedFormat • $slotsNum Slots)",
                             style = MaterialTheme.typography.labelMedium,
                             color = TextSecondary
                         )
@@ -308,14 +424,24 @@ fun CreateTournamentCard(
 
             Button(
                 onClick = {
-                    onCreateMatch(title, selectedGame, time, mapName, entry, perKill, prize, slots) {
+                    onCreateMatch(
+                        title,
+                        selectedGame,
+                        selectedMode,
+                        selectedFormat,
+                        time,
+                        mapName,
+                        entry,
+                        perKill,
+                        prize,
+                        slots
+                    ) {
                         title = ""
                         time = ""
                         mapName = ""
                         entry = ""
                         perKill = ""
                         prize = ""
-                        slots = ""
                     }
                 },
                 enabled = !isBusy,
@@ -346,6 +472,8 @@ fun AdminMatchCard(
 ) {
     var roomId by rememberSaveable(match.id, match.roomId) { mutableStateOf(match.roomId) }
     var roomPass by rememberSaveable(match.id, match.roomPass) { mutableStateOf(match.roomPass) }
+    val resolvedMode = MatchMode.fromRaw(match.matchMode).label
+    val resolvedFormat = TeamFormat.fromRaw(match.teamFormat).label
 
     val fieldColors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = EmeraldWin,
@@ -372,22 +500,53 @@ fun AdminMatchCard(
                 verticalAlignment = Alignment.Top
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Row(
+                    LazyRow(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Surface(
-                            color = BlazeOrangeContainer,
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text(
-                                text = match.game,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = BlazeOrange,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
+                        item {
+                            Surface(
+                                color = BlazeOrangeContainer,
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text(
+                                    text = match.game,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = BlazeOrange,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
                         }
-                        StatusBadge(status = match.status)
+                        item {
+                            Surface(
+                                color = EmeraldWinContainer,
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text(
+                                    text = resolvedMode,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = EmeraldWin,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                        item {
+                            Surface(
+                                color = ArenaSlateSurface,
+                                shape = RoundedCornerShape(8.dp),
+                                border = BorderStroke(1.dp, ArenaSlateBorder)
+                            ) {
+                                Text(
+                                    text = resolvedFormat,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = TextPrimary,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                        item {
+                            StatusBadge(status = match.status)
+                        }
                     }
                     Text(
                         text = match.title,
@@ -480,14 +639,24 @@ fun AdminMatchCard(
                 border = BorderStroke(1.dp, ArenaSlateBorder),
                 modifier = Modifier.fillMaxWidth()
             ) {
+                val isTeamVsMode = resolvedFormat in listOf("1vs1", "2vs2", "4vs4")
+                val teamHalf = (match.slots / 2L).coerceAtLeast(1L).toInt()
                 val rosterText = if (joinedPlayers.isEmpty()) {
-                    "No players joined yet"
+                    "No players joined yet (0/${match.slots} slots filled)"
                 } else {
-                    joinedPlayers.joinToString("\n") { "${it.ign} (UID: ${it.gameUid}) • +91 ${it.phone}" }
+                    joinedPlayers.mapIndexed { idx, reg ->
+                        val slotPrefix = if (isTeamVsMode) {
+                            val teamNum = if (idx < teamHalf) 1 else 2
+                            "Team $teamNum • Slot #${idx + 1}"
+                        } else {
+                            "Slot #${idx + 1}"
+                        }
+                        "$slotPrefix: ${reg.ign} (UID: ${reg.gameUid}) • +91 ${reg.phone}"
+                    }.joinToString("\n")
                 }
                 Column(modifier = Modifier.padding(12.dp)) {
                     Text(
-                        text = "Joined Players (${joinedPlayers.size})",
+                        text = "Joined Slots (${joinedPlayers.size}/${match.slots})",
                         style = MaterialTheme.typography.labelMedium,
                         color = BlazeOrange
                     )

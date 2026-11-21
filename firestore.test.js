@@ -762,5 +762,102 @@ test("Admin profit withdrawal ledger (ownerPayouts) is admin-only and immutable"
   await assertFails(adminDb.collection("ownerPayouts").doc("payout_1").delete());
 });
 
+test("Match modes (Lone Wolf, Clash Squad, Custom) and team formats (1vs1, 2vs2, 4vs4) are validated", async () => {
+  const adminDb = adminContext().firestore();
+
+  // Valid Lone Wolf 1vs1 (2 slots)
+  await assertSucceeds(
+    adminDb.collection("matches").doc("lw_1v1").set({
+      title: "Lone Wolf King 1v1",
+      game: "Free Fire MAX",
+      matchMode: "Lone Wolf",
+      teamFormat: "1vs1",
+      matchTime: "9:00 PM",
+      mapName: "Iron Cage",
+      entry: 50,
+      perKill: 0,
+      prize: 80,
+      slots: 2,
+      joinedCount: 0,
+      roomId: "",
+      roomPass: "",
+      status: "LIVE",
+      createdBy: ADMIN_UID,
+      createdAt: pastDate(3000),
+      updatedAt: pastDate(3000),
+    })
+  );
+
+  // Valid Clash Squad 4vs4 (8 slots)
+  await assertSucceeds(
+    adminDb.collection("matches").doc("cs_4v4").set({
+      title: "CS Squad Clash",
+      game: "Free Fire MAX",
+      matchMode: "Clash Squad",
+      teamFormat: "4vs4",
+      matchTime: "9:30 PM",
+      mapName: "Bermuda CS",
+      entry: 50,
+      perKill: 10,
+      prize: 320,
+      slots: 8,
+      joinedCount: 0,
+      roomId: "",
+      roomPass: "",
+      status: "LIVE",
+      createdBy: ADMIN_UID,
+      createdAt: pastDate(2000),
+      updatedAt: pastDate(2000),
+    })
+  );
+
+  // Invalid matchMode fails
+  await assertFails(
+    adminDb.collection("matches").doc("bad_mode").set({
+      title: "Invalid Mode",
+      game: "Free Fire MAX",
+      matchMode: "UnknownMode",
+      teamFormat: "2vs2",
+      matchTime: "10:00 PM",
+      mapName: "Bermuda",
+      entry: 20,
+      perKill: 5,
+      prize: 60,
+      slots: 4,
+      joinedCount: 0,
+      roomId: "",
+      roomPass: "",
+      status: "LIVE",
+      createdBy: ADMIN_UID,
+      createdAt: pastDate(1000),
+      updatedAt: pastDate(1000),
+    })
+  );
+
+  // Invalid teamFormat fails
+  await assertFails(
+    adminDb.collection("matches").doc("bad_format").set({
+      title: "Invalid Format",
+      game: "Free Fire MAX",
+      matchMode: "Custom",
+      teamFormat: "10vs10",
+      matchTime: "10:00 PM",
+      mapName: "Bermuda",
+      entry: 20,
+      perKill: 5,
+      prize: 60,
+      slots: 20,
+      joinedCount: 0,
+      roomId: "",
+      roomPass: "",
+      status: "LIVE",
+      createdBy: ADMIN_UID,
+      createdAt: pastDate(1000),
+      updatedAt: pastDate(1000),
+    })
+  );
+});
+
+
 
 

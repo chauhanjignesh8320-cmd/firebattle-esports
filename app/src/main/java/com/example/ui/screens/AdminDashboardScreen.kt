@@ -116,7 +116,7 @@ fun AdminDashboardScreen(
     settingsState: UiState<AppSettings>,
     isBusy: Boolean,
     onBackToPlayer: () -> Unit,
-    onCreateMatch: (String, String, String, String, String, String, String, String, () -> Unit) -> Unit,
+    onCreateMatch: (String, String, String, String, String, String, String, String, String, String, () -> Unit) -> Unit,
     onUpdateRoom: (matchId: String, roomId: String, roomPass: String) -> Unit,
     onToggleMatchStatus: (TournamentMatch) -> Unit,
     onDeleteMatch: (matchId: String) -> Unit,
@@ -410,7 +410,7 @@ private fun AdminTabBody(
     usersState: UiState<List<UserProfile>>,
     settingsState: UiState<AppSettings>,
     isBusy: Boolean,
-    onCreateMatch: (String, String, String, String, String, String, String, String, () -> Unit) -> Unit,
+    onCreateMatch: (String, String, String, String, String, String, String, String, String, String, () -> Unit) -> Unit,
     onUpdateRoom: (String, String, String) -> Unit,
     onToggleMatchStatus: (TournamentMatch) -> Unit,
     onRequestDeleteMatch: (TournamentMatch) -> Unit,
@@ -423,6 +423,8 @@ private fun AdminTabBody(
     onOpenProfitWithdraw: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var adminModeFilter by rememberSaveable { mutableStateOf("All") }
+    var adminFormatFilter by rememberSaveable { mutableStateOf("All") }
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
@@ -475,15 +477,61 @@ private fun AdminTabBody(
                     is UiState.Error -> item { ErrorBannerCard(matchesState.message) }
                     is UiState.Success -> {
                         val regMap = (registrationsState as? UiState.Success)?.data ?: emptyMap()
-                        if (matchesState.data.isEmpty()) {
+                        val filteredAdminMatches = matchesState.data.filter { m ->
+                            val mode = com.example.data.model.MatchMode.fromRaw(m.matchMode).label
+                            val format = com.example.data.model.TeamFormat.fromRaw(m.teamFormat).label
+                            (adminModeFilter == "All" || mode == adminModeFilter) &&
+                                (adminFormatFilter == "All" || format == adminFormatFilter)
+                        }
+                        item {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                androidx.compose.foundation.lazy.LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    items(listOf("All", "Lone Wolf", "Clash Squad", "Custom")) { modeOpt ->
+                                        androidx.compose.material3.FilterChip(
+                                            selected = adminModeFilter == modeOpt,
+                                            onClick = { adminModeFilter = modeOpt },
+                                            label = { Text(modeOpt) },
+                                            colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
+                                                selectedContainerColor = EmeraldWin,
+                                                selectedLabelColor = ArenaObsidian,
+                                                containerColor = ArenaSlateDark,
+                                                labelColor = TextSecondary
+                                            )
+                                        )
+                                    }
+                                }
+                                androidx.compose.foundation.lazy.LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    items(listOf("All", "1vs1", "2vs2", "4vs4", "Full Map")) { fmtOpt ->
+                                        androidx.compose.material3.FilterChip(
+                                            selected = adminFormatFilter == fmtOpt,
+                                            onClick = { adminFormatFilter = fmtOpt },
+                                            label = { Text(fmtOpt) },
+                                            colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
+                                                selectedContainerColor = BlazeOrange,
+                                                selectedLabelColor = TextPrimary,
+                                                containerColor = ArenaSlateDark,
+                                                labelColor = TextSecondary
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        if (filteredAdminMatches.isEmpty()) {
                             item {
                                 EmptyArenaState(
                                     title = "No Matches Published",
-                                    subtitle = "Create your first Free Fire MAX or BGMI tournament above."
+                                    subtitle = "Create Lone Wolf, Clash Squad, or Custom rooms above."
                                 )
                             }
                         } else {
-                            items(matchesState.data, key = { it.id }) { match ->
+                            items(filteredAdminMatches, key = { it.id }) { match ->
                                 AdminMatchCard(
                                     match = match,
                                     joinedPlayers = regMap[match.id] ?: emptyList(),

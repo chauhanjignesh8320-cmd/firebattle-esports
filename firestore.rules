@@ -63,6 +63,8 @@ service cloud.firestore {
     function isValidMatch(data) {
       return data.title is string && data.title.size() >= 2 && data.title.size() <= 80 &&
              (data.game == 'Free Fire MAX' || data.game == 'BGMI') &&
+             (!('matchMode' in data) || (data.matchMode == 'Custom' || data.matchMode == 'Clash Squad' || data.matchMode == 'Lone Wolf')) &&
+             (!('teamFormat' in data) || (data.teamFormat == '1vs1' || data.teamFormat == '2vs2' || data.teamFormat == '4vs4' || data.teamFormat == 'Full Map')) &&
              data.matchTime is string && data.matchTime.size() >= 2 && data.matchTime.size() <= 50 &&
              data.mapName is string && data.mapName.size() >= 2 && data.mapName.size() <= 40 &&
              data.entry is int && data.entry >= 0 && data.entry <= 100000 &&
@@ -253,7 +255,7 @@ service cloud.firestore {
                        incoming().joinedCount == 0 &&
                        incoming().status == 'LIVE' &&
                        incoming().keys().hasAll(['title', 'game', 'matchTime', 'mapName', 'entry', 'perKill', 'prize', 'slots', 'joinedCount', 'roomId', 'roomPass', 'status', 'createdBy', 'createdAt', 'updatedAt']) &&
-                       incoming().keys().hasOnly(['title', 'game', 'matchTime', 'mapName', 'entry', 'perKill', 'prize', 'slots', 'joinedCount', 'roomId', 'roomPass', 'status', 'createdBy', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['title', 'game', 'matchMode', 'teamFormat', 'matchTime', 'mapName', 'entry', 'perKill', 'prize', 'slots', 'joinedCount', 'roomId', 'roomPass', 'status', 'createdBy', 'createdAt', 'updatedAt']) &&
                        isValidMatch(incoming()) &&
                        incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
                        incoming().updatedAt is timestamp && incoming().updatedAt <= request.time;
@@ -264,7 +266,7 @@ service cloud.firestore {
                        incoming().createdAt == existing().createdAt &&
                        incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
                        (
-                         (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'game', 'matchTime', 'mapName', 'entry', 'perKill', 'prize', 'slots', 'roomId', 'roomPass', 'status', 'updatedAt'])) ||
+                         (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'game', 'matchMode', 'teamFormat', 'matchTime', 'mapName', 'entry', 'perKill', 'prize', 'slots', 'roomId', 'roomPass', 'status', 'updatedAt'])) ||
                          (existing().status == 'LIVE' &&
                           incoming().diff(existing()).affectedKeys().hasOnly(['joinedCount', 'updatedAt']) &&
                           incoming().joinedCount == existing().joinedCount + 1 &&

@@ -53,6 +53,29 @@ enum class MatchStatus(val wireValue: String) {
     }
 }
 
+enum class MatchMode(val label: String) {
+    CUSTOM("Custom"),
+    CLASH_SQUAD("Clash Squad"),
+    LONE_WOLF("Lone Wolf");
+
+    companion object {
+        fun fromRaw(raw: String?): MatchMode =
+            entries.firstOrNull { it.label == raw || it.name == raw } ?: CUSTOM
+    }
+}
+
+enum class TeamFormat(val label: String, val defaultSlots: Long) {
+    ONE_VS_ONE("1vs1", 2L),
+    TWO_VS_TWO("2vs2", 4L),
+    FOUR_VS_FOUR("4vs4", 8L),
+    FULL_MAP("Full Map", 48L);
+
+    companion object {
+        fun fromRaw(raw: String?): TeamFormat =
+            entries.firstOrNull { it.label == raw || it.name == raw } ?: FULL_MAP
+    }
+}
+
 const val DEFAULT_APP_DOWNLOAD_URL =
     "https://github.com/chauhanjignesh8320-cmd/firebattle-esports/releases/latest/download/Firebattle.apk"
 
@@ -118,6 +141,8 @@ data class TournamentMatch(
     @DocumentId val id: String = "",
     val title: String = "",
     val game: String = GameTitle.FREE_FIRE_MAX.label,
+    val matchMode: String = MatchMode.CUSTOM.label,
+    val teamFormat: String = TeamFormat.FULL_MAP.label,
     val matchTime: String = "",
     val mapName: String = "",
     val entry: Long = 0L,

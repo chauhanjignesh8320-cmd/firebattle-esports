@@ -296,8 +296,20 @@ private fun AuthenticatedArenaShell(
                                 settingsState = adminSettings,
                                 isBusy = adminBusy,
                                 onBackToPlayer = { currentMode = AppMode.PLAYER },
-                                onCreateMatch = { title, game, time, mapName, entry, perKill, prize, slots, onSuccess ->
-                                    adminViewModel.createMatch(title, game, time, mapName, entry, perKill, prize, slots, onSuccess)
+                                onCreateMatch = { title, game, matchMode, teamFormat, time, mapName, entry, perKill, prize, slots, onSuccess ->
+                                    adminViewModel.createMatch(
+                                        title = title,
+                                        game = game,
+                                        matchMode = matchMode,
+                                        teamFormat = teamFormat,
+                                        matchTime = time,
+                                        mapName = mapName,
+                                        entryText = entry,
+                                        perKillText = perKill,
+                                        prizeText = prize,
+                                        slotsText = slots,
+                                        onSuccess = onSuccess
+                                    )
                                 },
                                 onUpdateRoom = { matchId, rid, rpass ->
                                     adminViewModel.updateRoomCredentials(matchId, rid, rpass)

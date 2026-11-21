@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -93,8 +94,10 @@ import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.data.model.AppSettings
 import com.example.data.model.DepositRequest
+import com.example.data.model.MatchMode
 import com.example.data.model.PlayerTab
 import com.example.data.model.ReferralRecord
+import com.example.data.model.TeamFormat
 import com.example.data.model.TournamentMatch
 import com.example.data.model.UiState
 import com.example.data.model.UserProfile
@@ -487,13 +490,19 @@ private fun TournamentsSection(
     modifier: Modifier = Modifier
 ) {
     var gameFilter by rememberSaveable { mutableStateOf("All") }
+    var modeFilter by rememberSaveable { mutableStateOf("All") }
+    var formatFilter by rememberSaveable { mutableStateOf("All") }
     val joinedIds = (joinedMatchIdsState as? UiState.Success)?.data ?: emptySet()
     val settings = (settingsState as? UiState.Success)?.data ?: AppSettings()
+    val allMatches = (matchesState as? UiState.Success)?.data ?: emptyList()
+    val gameMatches = remember(allMatches, gameFilter) {
+        allMatches.filter { gameFilter == "All" || it.game == gameFilter }
+    }
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
             PlayerProfileWalletBar(profile = profile, onEditProfile = onEditProfile)
@@ -510,11 +519,11 @@ private fun TournamentsSection(
         }
 
         item {
-            Row(
+            LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                listOf("All", "Free Fire MAX", "BGMI").forEach { option ->
+                items(listOf("All", "Free Fire MAX", "BGMI")) { option ->
                     FilterChip(
                         selected = gameFilter == option,
                         onClick = { gameFilter = option },
@@ -531,6 +540,89 @@ private fun TournamentsSection(
                             borderColor = ArenaSlateBorder
                         )
                     )
+                }
+            }
+        }
+
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = "Match Mode",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextSecondary
+                )
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(listOf("All", "Lone Wolf", "Clash Squad", "Custom")) { modeOpt ->
+                        val count = if (modeOpt == "All") {
+                            gameMatches.size
+                        } else {
+                            gameMatches.count { MatchMode.fromRaw(it.matchMode).label == modeOpt }
+                        }
+                        val label = if (allMatches.isNotEmpty()) "$modeOpt ($count)" else modeOpt
+                        FilterChip(
+                            selected = modeFilter == modeOpt,
+                            onClick = { modeFilter = modeOpt },
+                            label = { Text(label) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = EmeraldWin,
+                                selectedLabelColor = ArenaObsidian,
+                                containerColor = ArenaSlateDark,
+                                labelColor = TextSecondary
+                            ),
+                            border = FilterChipDefaults.filterChipBorder(
+                                enabled = true,
+                                selected = modeFilter == modeOpt,
+                                borderColor = ArenaSlateBorder
+                            ),
+                            modifier = Modifier.testTag("player_mode_filter_${modeOpt.lowercase().replace(" ", "_")}")
+                        )
+                    }
+                }
+            }
+        }
+
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = "Format & Slots",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextSecondary
+                )
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(listOf("All", "1vs1", "2vs2", "4vs4", "Full Map")) { fmtOpt ->
+                        val modeScoped = gameMatches.filter {
+                            modeFilter == "All" || MatchMode.fromRaw(it.matchMode).label == modeFilter
+                        }
+                        val count = if (fmtOpt == "All") {
+                            modeScoped.size
+                        } else {
+                            modeScoped.count { TeamFormat.fromRaw(it.teamFormat).label == fmtOpt }
+                        }
+                        val label = if (allMatches.isNotEmpty()) "$fmtOpt ($count)" else fmtOpt
+                        FilterChip(
+                            selected = formatFilter == fmtOpt,
+                            onClick = { formatFilter = fmtOpt },
+                            label = { Text(label) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = BlazeOrange,
+                                selectedLabelColor = TextPrimary,
+                                containerColor = ArenaSlateDark,
+                                labelColor = TextSecondary
+                            ),
+                            border = FilterChipDefaults.filterChipBorder(
+                                enabled = true,
+                                selected = formatFilter == fmtOpt,
+                                borderColor = ArenaSlateBorder
+                            ),
+                            modifier = Modifier.testTag("player_format_filter_${fmtOpt.lowercase().replace(" ", "_")}")
+                        )
+                    }
                 }
             }
         }
@@ -552,14 +644,18 @@ private fun TournamentsSection(
             }
 
             is UiState.Success -> {
-                val filtered = matchesState.data.filter {
-                    gameFilter == "All" || it.game == gameFilter
+                val filtered = matchesState.data.filter { match ->
+                    val mode = MatchMode.fromRaw(match.matchMode).label
+                    val format = TeamFormat.fromRaw(match.teamFormat).label
+                    (gameFilter == "All" || match.game == gameFilter) &&
+                        (modeFilter == "All" || mode == modeFilter) &&
+                        (formatFilter == "All" || format == formatFilter)
                 }
                 if (filtered.isEmpty()) {
                     item {
                         EmptyArenaState(
-                            title = "No Active Tournaments",
-                            subtitle = "New Free Fire MAX & BGMI rooms will appear here as soon as the organizer publishes them."
+                            title = "No Matches in This Category",
+                            subtitle = "Try switching Mode (Lone Wolf / Clash Squad / Custom) or Format (1vs1 / 2vs2 / 4vs4)."
                         )
                     }
                 } else {
@@ -666,9 +762,12 @@ private fun TournamentMatchCard(
 ) {
     val clipboard = LocalClipboardManager.current
     val isFull = match.joinedCount >= match.slots
+    val slotsRemaining = (match.slots - match.joinedCount).coerceAtLeast(0L)
     val slotProgress = if (match.slots > 0L) {
         (match.joinedCount.toFloat() / match.slots.toFloat()).coerceIn(0f, 1f)
     } else 0f
+    val resolvedMode = MatchMode.fromRaw(match.matchMode).label
+    val resolvedFormat = TeamFormat.fromRaw(match.teamFormat).label
 
     Surface(
         color = ArenaSlateDark,
@@ -686,18 +785,54 @@ private fun TournamentMatchCard(
                 verticalAlignment = Alignment.Top
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Surface(
-                        color = BlazeOrangeContainer,
-                        shape = RoundedCornerShape(8.dp)
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = match.game,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = BlazeOrange,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
+                        item {
+                            Surface(
+                                color = BlazeOrangeContainer,
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text(
+                                    text = match.game,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = BlazeOrange,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                        item {
+                            Surface(
+                                color = EmeraldWinContainer,
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text(
+                                    text = resolvedMode,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = EmeraldWin,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                        item {
+                            Surface(
+                                color = ArenaSlateSurface,
+                                shape = RoundedCornerShape(8.dp),
+                                border = BorderStroke(1.dp, ArenaSlateBorder)
+                            ) {
+                                Text(
+                                    text = resolvedFormat,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = TextPrimary,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
                     }
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = match.title,
                         style = MaterialTheme.typography.titleLarge,
@@ -712,26 +847,44 @@ private fun TournamentMatchCard(
                 Surface(
                     color = ArenaSlateSurface,
                     shape = RoundedCornerShape(10.dp),
-                    border = BorderStroke(1.dp, ArenaSlateBorder)
+                    border = BorderStroke(1.dp, if (isFull) BlazeOrange.copy(alpha = 0.6f) else ArenaSlateBorder)
                 ) {
-                    Text(
-                        text = "${match.joinedCount}/${match.slots} Slots",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (isFull) BlazeOrange else TextPrimary,
+                    Column(
+                        horizontalAlignment = Alignment.End,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                    )
+                    ) {
+                        Text(
+                            text = "${match.joinedCount}/${match.slots} Slots",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (isFull) BlazeOrange else TextPrimary,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = if (isFull) "Room Full" else "$slotsRemaining Open",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (isFull) BlazeOrange else EmeraldWin
+                        )
+                    }
                 }
             }
 
-            LinearProgressIndicator(
-                progress = { slotProgress },
-                color = if (isFull) BlazeOrange else EmeraldWin,
-                trackColor = ArenaSlateSurface,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(4.dp))
-            )
+            if (match.slots <= 12L) {
+                MatchTeamSlotsStrip(
+                    totalSlots = match.slots.toInt(),
+                    joinedCount = match.joinedCount.toInt(),
+                    teamFormat = resolvedFormat
+                )
+            } else {
+                LinearProgressIndicator(
+                    progress = { slotProgress },
+                    color = if (isFull) BlazeOrange else EmeraldWin,
+                    trackColor = ArenaSlateSurface,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                )
+            }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -845,6 +998,94 @@ private fun TournamentMatchCard(
                             .testTag("join_match_button_${match.id}")
                     ) {
                         Text("Join Match (₹${match.entry})", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MatchTeamSlotsStrip(
+    totalSlots: Int,
+    joinedCount: Int,
+    teamFormat: String
+) {
+    val half = (totalSlots / 2).coerceAtLeast(1)
+    Surface(
+        color = ArenaObsidian,
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, ArenaSlateBorder),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "Match Slots ($teamFormat)",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextSecondary
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    for (slotIndex in 0 until half) {
+                        val isTaken = slotIndex < joinedCount
+                        Surface(
+                            color = if (isTaken) EmeraldWin else ArenaSlateSurface,
+                            shape = RoundedCornerShape(6.dp),
+                            border = BorderStroke(1.dp, if (isTaken) EmeraldWin else ArenaSlateBorder),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(24.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = "#${slotIndex + 1}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (isTaken) ArenaObsidian else TextSecondary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+                Text(
+                    text = "VS",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = BlazeOrange,
+                    fontWeight = FontWeight.ExtraBold
+                )
+                Row(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    for (slotIndex in half until totalSlots) {
+                        val isTaken = slotIndex < joinedCount
+                        Surface(
+                            color = if (isTaken) EmeraldWin else ArenaSlateSurface,
+                            shape = RoundedCornerShape(6.dp),
+                            border = BorderStroke(1.dp, if (isTaken) EmeraldWin else ArenaSlateBorder),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(24.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = "#${slotIndex + 1}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (isTaken) ArenaObsidian else TextSecondary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
                     }
                 }
             }

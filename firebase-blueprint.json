@@ -146,6 +146,16 @@
           "enum": ["Free Fire MAX", "BGMI"],
           "description": "Game title."
         },
+        "matchMode": {
+          "type": "string",
+          "enum": ["Custom", "Clash Squad", "Lone Wolf"],
+          "description": "Esports match mode category."
+        },
+        "teamFormat": {
+          "type": "string",
+          "enum": ["1vs1", "2vs2", "4vs4", "Full Map"],
+          "description": "Team size and slot format."
+        },
         "matchTime": {
           "type": "string",
           "description": "Scheduled match time text."
