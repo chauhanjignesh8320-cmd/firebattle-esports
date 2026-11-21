@@ -1,14 +1,18 @@
 package com.example.data.firebase
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
 import android.util.Log
-import android.annotation.SuppressLint
 import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.credentials.exceptions.GetCredentialProviderConfigurationException
+import androidx.credentials.exceptions.GetCredentialUnsupportedException
+import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
@@ -62,10 +66,11 @@ fun attemptAutoSignIn(
     val request = GetCredentialRequest.Builder()
         .addCredentialOption(googleIdOption)
         .build()
+    val targetContext: Context = context.findActivity() ?: context
 
     scope.launch {
         try {
-            val cred = credentialManager.getCredential(context, request).credential
+            val cred = credentialManager.getCredential(targetContext, request).credential
             if (cred is CustomCredential && cred.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
                 val token = GoogleIdTokenCredential.createFrom(cred.data).idToken
                 Firebase.auth.signInWithCredential(GoogleAuthProvider.getCredential(token, null)).await()
@@ -94,19 +99,55 @@ fun onGoogleSignInClicked(
         onAuthError("Google Sign-In configuration missing: default_web_client_id not found")
         return
     }
-    val activity = context as? Activity
+    val activity = context.findActivity()
     if (activity == null) {
         onAuthError("Unable to launch Google Sign-In from non-activity context")
         return
     }
     val signInOption = GetSignInWithGoogleOption.Builder(serverClientId = clientId).build()
-    val request = GetCredentialRequest.Builder()
+    val primaryRequest = GetCredentialRequest.Builder()
         .addCredentialOption(signInOption)
         .build()
 
     scope.launch {
         try {
-            val cred = credentialManager.getCredential(activity, request).credential
+            val cred = try {
+                credentialManager.getCredential(activity, primaryRequest).credential
+            } catch (e: NoCredentialException) {
+                Log.w(TAG, "Primary GetSignInWithGoogleOption returned NoCredentialException; retrying with GetGoogleIdOption", e)
+                val fallbackOption = GetGoogleIdOption.Builder()
+                    .setFilterByAuthorizedAccounts(false)
+                    .setAutoSelectEnabled(false)
+                    .setServerClientId(clientId)
+                    .build()
+                val fallbackRequest = GetCredentialRequest.Builder()
+                    .addCredentialOption(fallbackOption)
+                    .build()
+                credentialManager.getCredential(activity, fallbackRequest).credential
+            } catch (e: GetCredentialUnsupportedException) {
+                Log.w(TAG, "Primary GetSignInWithGoogleOption unsupported; retrying with GetGoogleIdOption", e)
+                val fallbackOption = GetGoogleIdOption.Builder()
+                    .setFilterByAuthorizedAccounts(false)
+                    .setAutoSelectEnabled(false)
+                    .setServerClientId(clientId)
+                    .build()
+                val fallbackRequest = GetCredentialRequest.Builder()
+                    .addCredentialOption(fallbackOption)
+                    .build()
+                credentialManager.getCredential(activity, fallbackRequest).credential
+            } catch (e: GetCredentialProviderConfigurationException) {
+                Log.w(TAG, "Primary GetSignInWithGoogleOption provider config error; retrying with GetGoogleIdOption", e)
+                val fallbackOption = GetGoogleIdOption.Builder()
+                    .setFilterByAuthorizedAccounts(false)
+                    .setAutoSelectEnabled(false)
+                    .setServerClientId(clientId)
+                    .build()
+                val fallbackRequest = GetCredentialRequest.Builder()
+                    .addCredentialOption(fallbackOption)
+                    .build()
+                credentialManager.getCredential(activity, fallbackRequest).credential
+            }
+
             if (cred is CustomCredential && cred.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
                 val token = GoogleIdTokenCredential.createFrom(cred.data).idToken
                 Firebase.auth.signInWithCredential(GoogleAuthProvider.getCredential(token, null)).await()
@@ -119,9 +160,16 @@ fun onGoogleSignInClicked(
         } catch (e: GetCredentialCancellationException) {
             Log.w(TAG, "Google Sign-In flow cancelled or dismissed: ${e.message}", e)
             onAuthCancelled()
+            val detail = e.message?.takeIf { it.isNotBlank() }
+            if (detail != null) {
+                onAuthError("Google Sign-In cancelled: $detail")
+            } else {
+                onAuthError("Google Sign-In was dismissed before selecting an account.")
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Google Sign-In failed", e)
-            onAuthError(e.localizedMessage ?: "Sign in failed")
+            val detail = e.localizedMessage ?: e.message ?: "Sign in failed"
+            onAuthError("${e.javaClass.simpleName}: $detail")
         }
     }
 }
@@ -143,6 +191,12 @@ fun signOut(
             }
         }
     }
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
 
 @SuppressLint("DiscouragedApi")
