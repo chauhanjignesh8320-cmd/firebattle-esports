@@ -97,13 +97,57 @@ jobs:
             echo "Found app/google-services.json in repository."
           fi
 
-          if command -v python3 >/dev/null 2>&1; then
-            python3 -c 'import json; json.load(open("app/google-services.json"))' || {
-              echo "=== ERROR: app/google-services.json is not valid JSON ==="
-              echo "Check that you copied the entire file from { to } into GOOGLE_SERVICES_JSON."
-              exit 1
-            }
-          fi
+          python3 - <<'PY'
+          import base64
+          import json
+          import re
+          import sys
+          from pathlib import Path
+
+          p = Path("app/google-services.json")
+          raw = p.read_text(encoding="utf-8", errors="replace")
+          text = raw.lstrip("\ufeff").strip()
+
+          # Strip markdown code fences if accidentally copied
+          if text.startswith("```"):
+              lines = text.splitlines()
+              if len(lines) >= 2 and lines[0].startswith("```"):
+                  lines = lines[1:]
+              if lines and lines[-1].strip().startswith("```"):
+                  lines = lines[:-1]
+              text = "\n".join(lines).strip()
+
+          # Strip editor line numbers like "1: {" if accidentally copied
+          if re.match(r"^\d+:\s*", text):
+              text = "\n".join(re.sub(r"^\s*\d+:\s?", "", line) for line in text.splitlines()).strip()
+
+          # Normalize smart quotes from mobile keyboards
+          text = text.replace("\u201c", '"').replace("\u201d", '"')
+
+          # Try base64 decode if not starting with '{'
+          if text and not text.startswith("{"):
+              try:
+                  compact = re.sub(r"\s+", "", text)
+                  decoded = base64.b64decode(compact, validate=True).decode("utf-8", errors="strict").lstrip("\ufeff").strip()
+                  if decoded.startswith("{"):
+                      text = decoded
+              except Exception:
+                  pass
+
+          try:
+              parsed = json.loads(text)
+              if not isinstance(parsed, dict) or "project_info" not in parsed or "client" not in parsed:
+                  raise ValueError("Missing required 'project_info' or 'client' keys in google-services.json")
+              p.write_text(json.dumps(parsed, indent=2) + "\n", encoding="utf-8")
+              print(f"Validated app/google-services.json ({len(text)} chars).")
+          except Exception as e:
+              first_char = repr(text[:1]) if text else "<EMPTY>"
+              print("=== ERROR: app/google-services.json is not valid JSON ===")
+              print(f"Diagnostics: raw_bytes={len(raw)}, cleaned_chars={len(text)}, starts_with={first_char}, reason={e}")
+              print("Fix: Open GitHub Repo -> Settings -> Secrets and variables -> Actions -> GOOGLE_SERVICES_JSON, and paste the FULL content from '{' to '}'.")
+              print("Tip: Or upload app/google-services.json directly into the app/ folder in your GitHub repository.")
+              sys.exit(1)
+          PY
 
       - name: Build Debug APK
         run: |

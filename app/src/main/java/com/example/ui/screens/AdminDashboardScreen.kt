@@ -73,6 +73,7 @@ import com.example.data.model.TournamentMatch
 import com.example.data.model.UiState
 import com.example.data.model.UserProfile
 import com.example.data.model.WithdrawalRequest
+import com.example.ui.components.AdminUpiQrPreviewCard
 import com.example.ui.components.EmptyArenaState
 import com.example.ui.components.ErrorBannerCard
 import com.example.ui.components.StatusBadge
@@ -806,6 +807,11 @@ private fun AdminSettingsCard(
             ) {
                 Text(stringResource(R.string.save_settings), fontWeight = FontWeight.Bold)
             }
+
+            AdminUpiQrPreviewCard(
+                upiId = upiId,
+                upiName = upiName
+            )
         }
     }
 }

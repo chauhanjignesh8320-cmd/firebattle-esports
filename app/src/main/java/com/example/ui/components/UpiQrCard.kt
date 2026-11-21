@@ -1,0 +1,308 @@
+package com.example.ui.components
+
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Color as AndroidColor
+import android.net.Uri
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.QrCode2
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import com.example.R
+import com.example.ui.theme.ArenaObsidian
+import com.example.ui.theme.ArenaSlateBorder
+import com.example.ui.theme.BlazeOrange
+import com.example.ui.theme.BlazeOrangeContainer
+import com.example.ui.theme.EmeraldWin
+import com.example.ui.theme.EmeraldWinContainer
+import com.example.ui.theme.JetBrainsMonoFamily
+import com.example.ui.theme.TextMuted
+import com.example.ui.theme.TextPrimary
+import com.example.ui.theme.TextSecondary
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.EncodeHintType
+import com.google.zxing.qrcode.QRCodeWriter
+
+fun buildUpiPaymentUri(upiId: String, upiName: String, amount: Long? = null): String {
+    val builder = Uri.Builder()
+        .scheme("upi")
+        .authority("pay")
+        .appendQueryParameter("pa", upiId.trim())
+        .appendQueryParameter("pn", upiName.trim().ifBlank { "Firebattle Esports" })
+        .appendQueryParameter("cu", "INR")
+    if (amount != null && amount > 0L) {
+        builder.appendQueryParameter("am", amount.toString())
+    }
+    builder.appendQueryParameter("tn", "Firebattle Wallet Deposit")
+    return builder.build().toString()
+}
+
+private fun generateQrImageBitmap(content: String, sizePx: Int = 384): ImageBitmap? {
+    return try {
+        val hints = mapOf(EncodeHintType.MARGIN to 1)
+        val bitMatrix = QRCodeWriter().encode(content, BarcodeFormat.QR_CODE, sizePx, sizePx, hints)
+        val width = bitMatrix.width
+        val height = bitMatrix.height
+        val pixels = IntArray(width * height)
+        for (y in 0 until height) {
+            val offset = y * width
+            for (x in 0 until width) {
+                pixels[offset + x] = if (bitMatrix.get(x, y)) AndroidColor.BLACK else AndroidColor.WHITE
+            }
+        }
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
+        bitmap.asImageBitmap()
+    } catch (_: Exception) {
+        null
+    }
+}
+
+@Composable
+fun UpiQrPaymentCard(
+    upiId: String,
+    upiName: String,
+    amount: Long?,
+    onFeedback: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val cleanUpi = upiId.trim()
+    val hasValidUpi = cleanUpi.length >= 3 && cleanUpi.contains("@")
+    val upiUri = remember(cleanUpi, upiName, amount) {
+        if (hasValidUpi) buildUpiPaymentUri(cleanUpi, upiName, amount) else ""
+    }
+    val qrBitmap = remember(upiUri) {
+        if (upiUri.isNotBlank()) generateQrImageBitmap(upiUri) else null
+    }
+
+    Surface(
+        color = ArenaObsidian,
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, EmeraldWin.copy(alpha = 0.35f)),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.QrCode2,
+                    contentDescription = null,
+                    tint = EmeraldWin,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = stringResource(R.string.upi_qr_scan_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = EmeraldWin,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            if (amount != null && amount > 0L) {
+                Surface(
+                    color = BlazeOrangeContainer,
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(
+                        text = "Amount Pre-filled: ₹$amount",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = BlazeOrange,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
+                }
+            }
+
+            if (qrBitmap != null) {
+                Surface(
+                    color = Color.White,
+                    shape = RoundedCornerShape(16.dp),
+                    shadowElevation = 2.dp
+                ) {
+                    Image(
+                        bitmap = qrBitmap,
+                        contentDescription = "UPI Payment QR Code for $cleanUpi",
+                        filterQuality = FilterQuality.None,
+                        modifier = Modifier
+                            .padding(12.dp)
+                            .size(184.dp)
+                            .testTag("upi_qr_code_image")
+                    )
+                }
+
+                Text(
+                    text = stringResource(R.string.upi_qr_scan_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                    textAlign = TextAlign.Center
+                )
+
+                Button(
+                    onClick = {
+                        val payIntent = Intent(Intent.ACTION_VIEW, Uri.parse(upiUri))
+                        try {
+                            context.startActivity(Intent.createChooser(payIntent, "Pay with UPI App"))
+                        } catch (_: ActivityNotFoundException) {
+                            onFeedback("No UPI app found. Scan QR or copy UPI ID manually.")
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = BlazeOrange,
+                        contentColor = TextPrimary
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .testTag("open_upi_app_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.OpenInNew,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (amount != null && amount > 0L) {
+                            "Pay ₹$amount via UPI App"
+                        } else {
+                            stringResource(R.string.open_upi_app)
+                        },
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            } else {
+                Text(
+                    text = "Organizer UPI ID is not configured yet.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextMuted,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(vertical = 12.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun AdminUpiQrPreviewCard(
+    upiId: String,
+    upiName: String,
+    modifier: Modifier = Modifier
+) {
+    val cleanUpi = upiId.trim()
+    val hasValidUpi = cleanUpi.length >= 3 && cleanUpi.contains("@")
+    val upiUri = remember(cleanUpi, upiName) {
+        if (hasValidUpi) buildUpiPaymentUri(cleanUpi, upiName, null) else ""
+    }
+    val qrBitmap = remember(upiUri) {
+        if (upiUri.isNotBlank()) generateQrImageBitmap(upiUri, 320) else null
+    }
+
+    Surface(
+        color = ArenaObsidian,
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, ArenaSlateBorder),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.admin_qr_preview_title),
+                style = MaterialTheme.typography.titleSmall,
+                color = EmeraldWin,
+                fontWeight = FontWeight.Bold
+            )
+
+            if (qrBitmap != null) {
+                Surface(
+                    color = Color.White,
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Image(
+                        bitmap = qrBitmap,
+                        contentDescription = "Live Admin UPI QR Preview for $cleanUpi",
+                        filterQuality = FilterQuality.None,
+                        modifier = Modifier
+                            .padding(10.dp)
+                            .size(152.dp)
+                            .testTag("admin_upi_qr_preview")
+                    )
+                }
+                Text(
+                    text = "$upiName • $cleanUpi",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontFamily = JetBrainsMonoFamily,
+                    color = TextSecondary,
+                    textAlign = TextAlign.Center
+                )
+                Surface(
+                    color = EmeraldWinContainer,
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(
+                        text = "Shown automatically on Player Wallet Deposit screen",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = EmeraldWin,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
+                }
+            } else {
+                Text(
+                    text = "Enter a valid UPI ID above (e.g. name@ybl) to generate your live payment QR.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextMuted,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+    }
+}

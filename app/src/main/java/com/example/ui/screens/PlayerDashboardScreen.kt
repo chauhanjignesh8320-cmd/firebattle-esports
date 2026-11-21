@@ -95,6 +95,7 @@ import com.example.ui.components.EmptyArenaState
 import com.example.ui.components.ErrorBannerCard
 import com.example.ui.components.StatTile
 import com.example.ui.components.StatusBadge
+import com.example.ui.components.UpiQrPaymentCard
 import com.example.ui.components.formatTimestampShort
 import com.example.ui.theme.ArenaObsidian
 import com.example.ui.theme.ArenaSlateBorder
@@ -907,6 +908,13 @@ private fun WalletSection(
                             }
                         }
                     }
+
+                    UpiQrPaymentCard(
+                        upiId = settings.upiId,
+                        upiName = settings.upiName,
+                        amount = depAmount.toLongOrNull(),
+                        onFeedback = onCopyFeedback
+                    )
 
                     OutlinedTextField(
                         value = depAmount,
