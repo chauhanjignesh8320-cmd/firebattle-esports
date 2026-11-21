@@ -38,10 +38,12 @@ import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.CardGiftcard
 import androidx.compose.material.icons.outlined.EmojiEvents
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -133,6 +135,7 @@ fun PlayerDashboardScreen(
     onApplyReferralCode: (code: String, onSuccess: () -> Unit) -> Unit,
     onUpdateProfile: (ign: String, gameUid: String, phone: String, onSuccess: () -> Unit) -> Unit,
     onCopyFeedback: (String) -> Unit,
+    onLogout: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(PlayerTab.TOURNAMENTS) }
@@ -203,7 +206,9 @@ fun PlayerDashboardScreen(
                         onSubmitDeposit = onSubmitDeposit,
                         onSubmitWithdrawal = onSubmitWithdrawal,
                         onApplyReferralCode = onApplyReferralCode,
+                        onUpdateProfile = onUpdateProfile,
                         onCopyFeedback = onCopyFeedback,
+                        onLogout = onLogout,
                         modifier = Modifier.widthIn(max = 840.dp)
                     )
                 }
@@ -227,7 +232,8 @@ fun PlayerDashboardScreen(
                                     Text(
                                         text = playerTabLabel(tab),
                                         maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
+                                        overflow = TextOverflow.Ellipsis,
+                                        style = MaterialTheme.typography.labelSmall
                                     )
                                 },
                                 colors = NavigationBarItemDefaults.colors(
@@ -259,7 +265,9 @@ fun PlayerDashboardScreen(
                     onSubmitDeposit = onSubmitDeposit,
                     onSubmitWithdrawal = onSubmitWithdrawal,
                     onApplyReferralCode = onApplyReferralCode,
+                    onUpdateProfile = onUpdateProfile,
                     onCopyFeedback = onCopyFeedback,
+                    onLogout = onLogout,
                     modifier = Modifier.padding(innerPadding)
                 )
             }
@@ -335,9 +343,12 @@ private fun PlayerTabContent(
     onSubmitDeposit: (String, String, () -> Unit) -> Unit,
     onSubmitWithdrawal: (String, String, () -> Unit) -> Unit,
     onApplyReferralCode: (String, () -> Unit) -> Unit,
+    onUpdateProfile: (String, String, String, () -> Unit) -> Unit,
     onCopyFeedback: (String) -> Unit,
+    onLogout: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val joinedCount = (joinedMatchIdsState as? UiState.Success)?.data?.size ?: 0
     when (selectedTab) {
         PlayerTab.TOURNAMENTS -> TournamentsSection(
             profile = profile,
@@ -375,6 +386,17 @@ private fun PlayerTabContent(
         PlayerTab.REQUESTS -> RequestsHistorySection(
             depositsState = depositsState,
             withdrawalsState = withdrawalsState,
+            modifier = modifier
+        )
+
+        PlayerTab.PROFILE -> ProfileSection(
+            profile = profile,
+            joinedMatchesCount = joinedCount,
+            settingsState = settingsState,
+            isBusy = isBusy,
+            onUpdateProfile = onUpdateProfile,
+            onCopyFeedback = onCopyFeedback,
+            onLogout = onLogout,
             modifier = modifier
         )
     }
@@ -1421,6 +1443,7 @@ private fun PlayerTabIcon(tab: PlayerTab, selected: Boolean) {
         PlayerTab.WALLET -> if (selected) Icons.Filled.AccountBalanceWallet else Icons.Outlined.AccountBalanceWallet
         PlayerTab.REFER -> if (selected) Icons.Filled.CardGiftcard else Icons.Outlined.CardGiftcard
         PlayerTab.REQUESTS -> if (selected) Icons.Filled.History else Icons.Outlined.History
+        PlayerTab.PROFILE -> if (selected) Icons.Filled.Person else Icons.Outlined.Person
     }
     Icon(imageVector = icon, contentDescription = playerTabLabel(tab))
 }
@@ -1431,4 +1454,5 @@ private fun playerTabLabel(tab: PlayerTab): String = when (tab) {
     PlayerTab.WALLET -> stringResource(R.string.tab_wallet)
     PlayerTab.REFER -> stringResource(R.string.tab_refer)
     PlayerTab.REQUESTS -> stringResource(R.string.tab_requests)
+    PlayerTab.PROFILE -> stringResource(R.string.tab_profile)
 }

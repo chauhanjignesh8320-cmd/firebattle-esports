@@ -9,10 +9,11 @@
     <string name="profile_setup_title">Complete Player Profile</string>
     <string name="profile_setup_subtitle">Set your In-Game Name, Game UID, and 10-digit mobile number to join matches.</string>
     <string name="save_profile">Save Player Profile</string>
-    <string name="tab_tournaments">Tournaments</string>
+    <string name="tab_tournaments">Matches</string>
     <string name="tab_wallet">Wallet</string>
     <string name="tab_refer">Refer</string>
-    <string name="tab_requests">Requests</string>
+    <string name="tab_requests">History</string>
+    <string name="tab_profile">Profile</string>
     <string name="admin_tab_matches">Matches</string>
     <string name="admin_tab_deposits">Deposits</string>
     <string name="admin_tab_withdrawals">Withdrawals</string>
@@ -44,4 +45,7 @@
     <string name="admin_revenue_title">Owner Earnings &amp; Cashflow</string>
     <string name="sponsor_badge">PARTNER PROMO</string>
     <string name="sponsor_open_button">Visit</string>
+    <string name="profile_ids_title">Player IDs &amp; Referral</string>
+    <string name="profile_edit_title">Edit My Profile</string>
+    <string name="profile_save_changes">Save Profile Changes</string>
 </resources>

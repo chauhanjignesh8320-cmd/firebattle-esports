@@ -358,7 +358,8 @@ private fun AuthenticatedArenaShell(
                                 },
                                 onCopyFeedback = { msg ->
                                     scope.launch { snackbarHostState.showSnackbar(msg) }
-                                }
+                                },
+                                onLogout = handleLogout
                             )
                         }
                     }

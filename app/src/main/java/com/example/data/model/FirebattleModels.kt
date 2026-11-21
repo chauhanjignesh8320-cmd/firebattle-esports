@@ -21,7 +21,8 @@ enum class PlayerTab {
     TOURNAMENTS,
     WALLET,
     REFER,
-    REQUESTS
+    REQUESTS,
+    PROFILE
 }
 
 enum class AdminTab {
