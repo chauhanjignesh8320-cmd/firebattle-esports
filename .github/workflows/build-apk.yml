@@ -79,6 +79,14 @@ jobs:
             echo "Found app/google-services.json in repository."
           fi
 
+          if command -v python3 >/dev/null 2>&1; then
+            python3 -c 'import json; json.load(open("app/google-services.json"))' || {
+              echo "=== ERROR: app/google-services.json is not valid JSON ==="
+              echo "Check that you copied the entire file from { to } into GOOGLE_SERVICES_JSON."
+              exit 1
+            }
+          fi
+
       - name: Build Debug APK
         run: |
           set -o pipefail
