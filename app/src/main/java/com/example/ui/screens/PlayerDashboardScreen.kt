@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -28,12 +30,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.CardGiftcard
 import androidx.compose.material.icons.outlined.EmojiEvents
@@ -75,6 +79,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -336,6 +341,7 @@ private fun PlayerTabContent(
     when (selectedTab) {
         PlayerTab.TOURNAMENTS -> TournamentsSection(
             profile = profile,
+            settingsState = settingsState,
             matchesState = matchesState,
             joinedMatchIdsState = joinedMatchIdsState,
             isBusy = isBusy,
@@ -449,6 +455,7 @@ private fun PlayerProfileWalletBar(
 @Composable
 private fun TournamentsSection(
     profile: UserProfile,
+    settingsState: UiState<AppSettings>,
     matchesState: UiState<List<TournamentMatch>>,
     joinedMatchIdsState: UiState<Set<String>>,
     isBusy: Boolean,
@@ -459,6 +466,7 @@ private fun TournamentsSection(
 ) {
     var gameFilter by rememberSaveable { mutableStateOf("All") }
     val joinedIds = (joinedMatchIdsState as? UiState.Success)?.data ?: emptySet()
+    val settings = (settingsState as? UiState.Success)?.data ?: AppSettings()
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -467,6 +475,16 @@ private fun TournamentsSection(
     ) {
         item {
             PlayerProfileWalletBar(profile = profile, onEditProfile = onEditProfile)
+        }
+
+        if (settings.sponsorTitle.isNotBlank()) {
+            item {
+                SponsoredPartnerCard(
+                    title = settings.sponsorTitle,
+                    subtitle = settings.sponsorSubtitle,
+                    targetUrl = settings.sponsorUrl
+                )
+            }
         }
 
         item {
@@ -532,6 +550,84 @@ private fun TournamentsSection(
                             onCopyFeedback = onCopyFeedback
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SponsoredPartnerCard(
+    title: String,
+    subtitle: String,
+    targetUrl: String
+) {
+    val context = LocalContext.current
+    val hasValidUrl = targetUrl.startsWith("https://") || targetUrl.startsWith("http://")
+    Surface(
+        color = ArenaSlateDark,
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, BlazeOrange.copy(alpha = 0.5f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("sponsored_partner_card")
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Campaign,
+                contentDescription = stringResource(R.string.sponsor_badge),
+                tint = BlazeOrange,
+                modifier = Modifier.size(28.dp)
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.sponsor_badge),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = BlazeOrange,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = TextPrimary,
+                    fontWeight = FontWeight.Bold
+                )
+                if (subtitle.isNotBlank()) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                }
+            }
+            if (hasValidUrl) {
+                Button(
+                    onClick = {
+                        runCatching {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)))
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = BlazeOrange,
+                        contentColor = TextPrimary
+                    ),
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text(stringResource(R.string.sponsor_open_button), style = MaterialTheme.typography.labelMedium)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(
+                        imageVector = Icons.Filled.OpenInNew,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp)
+                    )
                 }
             }
         }
@@ -928,6 +1024,31 @@ private fun WalletSection(
                         onFeedback = onCopyFeedback
                     )
 
+                    Text(
+                        text = "Quick Deposit Packs (Auto-Updates QR)",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextSecondary
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf("50", "100", "250", "500").forEach { packAmount ->
+                            FilterChip(
+                                selected = depAmount == packAmount,
+                                onClick = { depAmount = packAmount },
+                                label = { Text("₹$packAmount") },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = EmeraldWin,
+                                    selectedLabelColor = ArenaObsidian,
+                                    containerColor = ArenaSlateSurface,
+                                    labelColor = TextPrimary
+                                ),
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+
                     OutlinedTextField(
                         value = depAmount,
                         onValueChange = { depAmount = it.filter { ch -> ch.isDigit() } },
@@ -982,6 +1103,12 @@ private fun WalletSection(
 
         // Withdrawal Card
         item {
+            val enteredWdAmount = wdAmount.toLongOrNull() ?: 0L
+            val feePercent = settings.withdrawalFeePercent
+            val minWithdrawal = settings.minWithdrawal
+            val calcFee = if (enteredWdAmount > 0L) (enteredWdAmount * feePercent) / 100L else 0L
+            val calcNet = (enteredWdAmount - calcFee).coerceAtLeast(0L)
+
             Surface(
                 color = ArenaSlateDark,
                 shape = RoundedCornerShape(18.dp),
@@ -997,11 +1124,16 @@ private fun WalletSection(
                         style = MaterialTheme.typography.titleLarge,
                         color = BlazeOrange
                     )
+                    Text(
+                        text = "Min Withdrawal: ₹$minWithdrawal • Platform Fee: $feePercent%",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextSecondary
+                    )
 
                     OutlinedTextField(
                         value = wdAmount,
                         onValueChange = { wdAmount = it.filter { ch -> ch.isDigit() } },
-                        label = { Text("Withdraw Amount (₹)") },
+                        label = { Text("Withdraw Amount (Min ₹$minWithdrawal)") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         colors = fieldColors,
@@ -1010,6 +1142,42 @@ private fun WalletSection(
                             .fillMaxWidth()
                             .testTag("withdraw_amount_input")
                     )
+
+                    if (enteredWdAmount > 0L) {
+                        Surface(
+                            color = ArenaObsidian,
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, ArenaSlateBorder),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("Platform Fee ($feePercent%)", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                                    Text("-₹$calcFee", style = MaterialTheme.typography.bodySmall, color = BlazeOrange)
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("You Receive via UPI", style = MaterialTheme.typography.labelLarge, color = TextPrimary)
+                                    Text("₹$calcNet", style = MaterialTheme.typography.labelLarge, color = EmeraldWin, fontWeight = FontWeight.ExtraBold)
+                                }
+                                if (enteredWdAmount < minWithdrawal) {
+                                    Text(
+                                        text = "Minimum withdrawal is ₹$minWithdrawal.",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = BlazeOrange
+                                    )
+                                }
+                            }
+                        }
+                    }
 
                     OutlinedTextField(
                         value = wdUpi,
@@ -1154,7 +1322,11 @@ private fun RequestsHistorySection(
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "₹${wd.amount} • UPI: ${wd.upiId}",
+                                        text = if (wd.feeAmount > 0L) {
+                                            "Net ₹${wd.resolvedNetPayout} (Fee ₹${wd.feeAmount}) • ${wd.upiId}"
+                                        } else {
+                                            "₹${wd.amount} • UPI: ${wd.upiId}"
+                                        },
                                         style = MaterialTheme.typography.titleSmall,
                                         color = TextPrimary
                                     )

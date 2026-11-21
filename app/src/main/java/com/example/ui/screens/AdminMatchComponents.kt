@@ -19,6 +19,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -106,6 +108,43 @@ fun CreateTournamentCard(
                 style = MaterialTheme.typography.titleLarge,
                 color = BlazeOrange
             )
+
+            Text(
+                text = "Quick Profit Presets (Auto 25%+ Owner Margin)",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextSecondary
+            )
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                listOf(
+                    Triple("₹20 Solo", "20", "650") to "48",
+                    Triple("₹50 Pro", "50", "1600") to "48",
+                    Triple("₹100 VIP", "100", "3200") to "48"
+                ).forEach { (triplet, presetSlots) ->
+                    val (label, presetEntry, presetPrize) = triplet
+                    FilterChip(
+                        selected = entry == presetEntry && slots == presetSlots,
+                        onClick = {
+                            entry = presetEntry
+                            prize = presetPrize
+                            slots = presetSlots
+                            if (perKill.isBlank()) perKill = (presetEntry.toLong() / 2L).toString()
+                            if (mapName.isBlank()) mapName = if (selectedGame == GameTitle.BGMI.label) "Erangel" else "Bermuda"
+                            if (time.isBlank()) time = "Tonight 9:00 PM"
+                        },
+                        label = { Text(label) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = EmeraldWin,
+                            selectedLabelColor = ArenaObsidian,
+                            containerColor = ArenaSlateSurface,
+                            labelColor = TextPrimary
+                        )
+                    )
+                }
+            }
 
             OutlinedTextField(
                 value = title,
@@ -220,6 +259,53 @@ fun CreateTournamentCard(
                 )
             }
 
+            val entryNum = entry.toLongOrNull() ?: 0L
+            val prizeNum = prize.toLongOrNull() ?: 0L
+            val slotsNum = slots.toLongOrNull() ?: 0L
+            if (entryNum > 0L && slotsNum > 0L) {
+                val maxCollection = entryNum * slotsNum
+                val estProfit = maxCollection - prizeNum
+                val profitPercent = if (maxCollection > 0L) ((estProfit * 100L) / maxCollection) else 0L
+                val profitColor = if (estProfit >= 0L) EmeraldWin else CrimsonReject
+                Surface(
+                    color = ArenaObsidian,
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, profitColor.copy(alpha = 0.45f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "Organizer Profit Estimator ($slotsNum Slots Full)",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = TextSecondary
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Total Collection: ₹$maxCollection",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextPrimary
+                            )
+                            Text(
+                                text = if (estProfit >= 0L) {
+                                    "Your Profit: +₹$estProfit ($profitPercent%)"
+                                } else {
+                                    "Loss Warning: -₹${-estProfit}"
+                                },
+                                style = MaterialTheme.typography.labelMedium,
+                                color = profitColor,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+
             Button(
                 onClick = {
                     onCreateMatch(title, selectedGame, time, mapName, entry, perKill, prize, slots) {
@@ -313,6 +399,15 @@ fun AdminMatchCard(
                         text = "${match.matchTime} • Map: ${match.mapName} • Entry: ₹${match.entry} • Slots: ${match.joinedCount}/${match.slots}",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary
+                    )
+                    val collected = match.entry * match.joinedCount
+                    val matchNet = collected - match.prize
+                    Text(
+                        text = "Collected: ₹$collected • Prize: ₹${match.prize} • Net Margin: ${if (matchNet >= 0) "+₹$matchNet" else "-₹${-matchNet}"}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (matchNet >= 0) EmeraldWin else BlazeOrange,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(top = 2.dp)
                     )
                 }
 

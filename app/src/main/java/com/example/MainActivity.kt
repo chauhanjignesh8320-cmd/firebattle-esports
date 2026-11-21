@@ -321,8 +321,8 @@ private fun AuthenticatedArenaShell(
                                 onAdjustUserWallet = { target, delta, onSuccess ->
                                     adminViewModel.adjustUserWallet(target, delta, onSuccess)
                                 },
-                                onSaveSettings = { upiId, upiName, adminPhone, referralBonusText, appDownloadUrl ->
-                                    adminViewModel.saveSettings(upiId, upiName, adminPhone, referralBonusText, appDownloadUrl)
+                                onSaveSettings = { draft ->
+                                    adminViewModel.saveSettings(draft)
                                 }
                             )
                         } else if (profile != null) {

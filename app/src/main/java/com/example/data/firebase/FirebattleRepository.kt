@@ -105,11 +105,22 @@ class FirebattleRepository(
                 .map { snapshot ->
                     val parsed = snapshot.toObject(AppSettings::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
                         ?: AppSettings()
-                    if (parsed.appDownloadUrl.isBlank()) {
-                        parsed.copy(appDownloadUrl = DEFAULT_APP_DOWNLOAD_URL)
+                    val resolvedUrl = parsed.appDownloadUrl.ifBlank { DEFAULT_APP_DOWNLOAD_URL }
+                    val resolvedFee = if (snapshot.exists() && !snapshot.contains("withdrawalFeePercent")) {
+                        0L
                     } else {
-                        parsed
+                        parsed.withdrawalFeePercent.coerceIn(0L, 20L)
                     }
+                    val resolvedMinWd = if (snapshot.exists() && !snapshot.contains("minWithdrawal")) {
+                        1L
+                    } else {
+                        parsed.minWithdrawal.coerceIn(1L, 5000L)
+                    }
+                    parsed.copy(
+                        appDownloadUrl = resolvedUrl,
+                        withdrawalFeePercent = resolvedFee,
+                        minWithdrawal = resolvedMinWd
+                    )
                 }
                 .catch { error -> handleStreamError(error, OperationType.GET, path, uid) }
         )
@@ -613,15 +624,40 @@ class FirebattleRepository(
             require(cleanUpi.length in 3..80 && cleanUpi.contains("@")) { "Enter a valid UPI ID (e.g. player@ybl)." }
 
             val userRef = db.collection("users").document(uid)
+            val settingsRef = db.collection("settings").document("app")
             val wdRef = db.collection("withdrawals").document()
             path = wdRef.path
 
             db.runTransaction { tx ->
+                val settingsSnap = tx.get(settingsRef)
                 val userSnap = tx.get(userRef)
+
+                val minWithdrawal = if (settingsSnap.exists()) {
+                    (settingsSnap.getLong("minWithdrawal") ?: 1L).coerceIn(1L, 5000L)
+                } else {
+                    1L
+                }
+                val feePercent = if (settingsSnap.exists()) {
+                    (settingsSnap.getLong("withdrawalFeePercent") ?: 0L).coerceIn(0L, 20L)
+                } else {
+                    0L
+                }
+
+                if (amount < minWithdrawal) {
+                    throw IllegalStateException("Minimum withdrawal is ₹$minWithdrawal.")
+                }
+
                 val currentWallet = userSnap.getLong("wallet") ?: 0L
                 if (currentWallet < amount) {
                     throw IllegalStateException("Insufficient wallet balance (₹$currentWallet).")
                 }
+
+                val feeAmount = (amount * feePercent) / 100L
+                val netPayout = amount - feeAmount
+                if (netPayout < 1L) {
+                    throw IllegalStateException("Net payout after platform fee must be at least ₹1.")
+                }
+
                 tx.update(
                     userRef,
                     mapOf(
@@ -636,6 +672,8 @@ class FirebattleRepository(
                         "phone" to profile.phone,
                         "ign" to profile.ign,
                         "amount" to amount,
+                        "feeAmount" to feeAmount,
+                        "netPayout" to netPayout,
                         "upiId" to cleanUpi,
                         "status" to "Pending",
                         "createdAt" to FieldValue.serverTimestamp(),
@@ -668,6 +706,11 @@ class FirebattleRepository(
                         "adminPhone" to "9876543210",
                         "referralBonus" to 10L,
                         "appDownloadUrl" to DEFAULT_APP_DOWNLOAD_URL,
+                        "withdrawalFeePercent" to 5L,
+                        "minWithdrawal" to 50L,
+                        "sponsorTitle" to "",
+                        "sponsorSubtitle" to "",
+                        "sponsorUrl" to "",
                         "updatedAt" to FieldValue.serverTimestamp()
                     )
                 ).await()
@@ -950,12 +993,20 @@ class FirebattleRepository(
         upiName: String,
         adminPhone: String,
         referralBonus: Long = 10L,
-        appDownloadUrl: String = DEFAULT_APP_DOWNLOAD_URL
+        appDownloadUrl: String = DEFAULT_APP_DOWNLOAD_URL,
+        withdrawalFeePercent: Long = 5L,
+        minWithdrawal: Long = 50L,
+        sponsorTitle: String = "",
+        sponsorSubtitle: String = "",
+        sponsorUrl: String = ""
     ): Result<Unit> {
         val cleanUpiId = upiId.trim()
         val cleanUpiName = upiName.trim()
         val cleanPhone = adminPhone.trim()
         val cleanDownloadUrl = appDownloadUrl.trim().ifBlank { DEFAULT_APP_DOWNLOAD_URL }
+        val cleanSponsorTitle = sponsorTitle.trim()
+        val cleanSponsorSubtitle = sponsorSubtitle.trim()
+        val cleanSponsorUrl = sponsorUrl.trim()
         val path = "settings/app"
         return try {
             requireUserId()
@@ -969,6 +1020,17 @@ class FirebattleRepository(
             ) {
                 "App Download Link must start with https:// or http:// (max 300 chars)."
             }
+            require(withdrawalFeePercent in 0L..20L) { "Platform withdrawal fee must be 0% to 20%." }
+            require(minWithdrawal in 1L..5000L) { "Minimum withdrawal must be ₹1 to ₹5,000." }
+            require(cleanSponsorTitle.length <= 100) { "Sponsor headline max 100 characters." }
+            require(cleanSponsorSubtitle.length <= 180) { "Sponsor subtitle max 180 characters." }
+            require(
+                cleanSponsorUrl.isEmpty() ||
+                    (cleanSponsorUrl.length <= 300 &&
+                        (cleanSponsorUrl.startsWith("https://") || cleanSponsorUrl.startsWith("http://")))
+            ) {
+                "Sponsor link must start with https:// or http:// (max 300 chars)."
+            }
 
             db.collection("settings").document("app").set(
                 mapOf(
@@ -977,6 +1039,11 @@ class FirebattleRepository(
                     "adminPhone" to cleanPhone,
                     "referralBonus" to referralBonus,
                     "appDownloadUrl" to cleanDownloadUrl,
+                    "withdrawalFeePercent" to withdrawalFeePercent,
+                    "minWithdrawal" to minWithdrawal,
+                    "sponsorTitle" to cleanSponsorTitle,
+                    "sponsorSubtitle" to cleanSponsorSubtitle,
+                    "sponsorUrl" to cleanSponsorUrl,
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
             ).await()

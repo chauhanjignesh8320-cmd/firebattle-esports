@@ -41,4 +41,7 @@
     <string name="upi_qr_scan_hint">Scan using Google Pay, PhonePe, Paytm, or BHIM, then submit your 12-digit UTR below.</string>
     <string name="open_upi_app">Pay via UPI App</string>
     <string name="admin_qr_preview_title">Your Live Payment QR Code</string>
+    <string name="admin_revenue_title">Owner Earnings &amp; Cashflow</string>
+    <string name="sponsor_badge">PARTNER PROMO</string>
+    <string name="sponsor_open_button">Visit</string>
 </resources>

@@ -76,6 +76,7 @@ import com.example.data.model.WithdrawalRequest
 import com.example.ui.components.AdminUpiQrPreviewCard
 import com.example.ui.components.EmptyArenaState
 import com.example.ui.components.ErrorBannerCard
+import com.example.ui.components.StatTile
 import com.example.ui.components.StatusBadge
 import com.example.ui.components.formatTimestampShort
 import com.example.ui.theme.ArenaObsidian
@@ -89,6 +90,7 @@ import com.example.ui.theme.EmeraldWin
 import com.example.ui.theme.JetBrainsMonoFamily
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import com.example.ui.viewmodel.AdminSettingsDraft
 
 @Composable
 fun AdminDashboardScreen(
@@ -109,7 +111,7 @@ fun AdminDashboardScreen(
     onMarkWithdrawalPaid: (String) -> Unit,
     onRejectWithdrawal: (WithdrawalRequest) -> Unit,
     onAdjustUserWallet: (UserProfile, String, () -> Unit) -> Unit,
-    onSaveSettings: (String, String, String, String, String) -> Unit,
+    onSaveSettings: (AdminSettingsDraft) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(AdminTab.MATCHES) }
@@ -339,7 +341,7 @@ private fun AdminTabBody(
     onMarkWithdrawalPaid: (String) -> Unit,
     onRejectWithdrawal: (WithdrawalRequest) -> Unit,
     onRequestWalletAdjust: (UserProfile) -> Unit,
-    onSaveSettings: (String, String, String, String, String) -> Unit,
+    onSaveSettings: (AdminSettingsDraft) -> Unit,
     modifier: Modifier = Modifier
 ) {
     LazyColumn(
@@ -378,6 +380,13 @@ private fun AdminTabBody(
 
         when (selectedTab) {
             AdminTab.MATCHES -> {
+                item {
+                    AdminEarningsOverviewCard(
+                        matchesState = matchesState,
+                        depositsState = depositsState,
+                        withdrawalsState = withdrawalsState
+                    )
+                }
                 item {
                     CreateTournamentCard(isBusy = isBusy, onCreateMatch = onCreateMatch)
                 }
@@ -602,7 +611,11 @@ private fun AdminWithdrawalCard(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "₹${withdrawal.amount} • ${withdrawal.ign}",
+                        text = if (withdrawal.feeAmount > 0L) {
+                            "Pay Net ₹${withdrawal.resolvedNetPayout} • ${withdrawal.ign}"
+                        } else {
+                            "₹${withdrawal.amount} • ${withdrawal.ign}"
+                        },
                         style = MaterialTheme.typography.titleMedium,
                         color = BlazeOrange
                     )
@@ -612,6 +625,14 @@ private fun AdminWithdrawalCard(
                         fontFamily = JetBrainsMonoFamily,
                         color = EmeraldWin
                     )
+                    if (withdrawal.feeAmount > 0L) {
+                        Text(
+                            text = "Gross: ₹${withdrawal.amount} • Owner Fee Kept: ₹${withdrawal.feeAmount}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = EmeraldWin,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                     Text(
                         text = formatTimestampShort(withdrawal.createdAt),
                         style = MaterialTheme.typography.bodySmall,
@@ -716,16 +737,77 @@ private fun AdminPlayerCard(
 }
 
 @Composable
+private fun AdminEarningsOverviewCard(
+    matchesState: UiState<List<TournamentMatch>>,
+    depositsState: UiState<List<DepositRequest>>,
+    withdrawalsState: UiState<List<WithdrawalRequest>>
+) {
+    val approvedDeposits = (depositsState as? UiState.Success)?.data
+        ?.filter { it.status == "Approved" }
+        ?.sumOf { it.amount } ?: 0L
+    val paidWithdrawals = (withdrawalsState as? UiState.Success)?.data
+        ?.filter { it.status == "Paid" }
+        ?.sumOf { it.resolvedNetPayout } ?: 0L
+    val feeRevenue = (withdrawalsState as? UiState.Success)?.data
+        ?.filter { it.status != "Rejected" }
+        ?.sumOf { it.feeAmount } ?: 0L
+    val entryRevenue = (matchesState as? UiState.Success)?.data
+        ?.sumOf { it.entry * it.joinedCount } ?: 0L
+    val netCashflow = approvedDeposits - paidWithdrawals
+
+    Surface(
+        color = ArenaSlateDark,
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(1.dp, EmeraldWin.copy(alpha = 0.4f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("admin_earnings_overview_card")
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.admin_revenue_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = EmeraldWin,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "Net: ${if (netCashflow >= 0) "+₹$netCashflow" else "-₹${-netCashflow}"}",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (netCashflow >= 0) EmeraldWin else CrimsonReject,
+                    fontWeight = FontWeight.ExtraBold
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                StatTile("UPI In", "₹$approvedDeposits", EmeraldWin, Modifier.weight(1f))
+                StatTile("Paid Out", "₹$paidWithdrawals", BlazeOrange, Modifier.weight(1f))
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                StatTile("Entry Collected", "₹$entryRevenue", TextPrimary, Modifier.weight(1f))
+                StatTile("Withdrawal Fees", "₹$feeRevenue", EmeraldWin, Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
 private fun AdminSettingsCard(
     initialSettings: AppSettings,
     isBusy: Boolean,
-    onSave: (
-        upiId: String,
-        upiName: String,
-        adminPhone: String,
-        referralBonusText: String,
-        appDownloadUrl: String
-    ) -> Unit
+    onSave: (AdminSettingsDraft) -> Unit
 ) {
     var upiId by rememberSaveable(initialSettings.upiId) { mutableStateOf(initialSettings.upiId) }
     var upiName by rememberSaveable(initialSettings.upiName) { mutableStateOf(initialSettings.upiName) }
@@ -735,6 +817,21 @@ private fun AdminSettingsCard(
     }
     var appDownloadUrl by rememberSaveable(initialSettings.appDownloadUrl) {
         mutableStateOf(initialSettings.appDownloadUrl)
+    }
+    var withdrawalFeePercent by rememberSaveable(initialSettings.withdrawalFeePercent) {
+        mutableStateOf(initialSettings.withdrawalFeePercent.toString())
+    }
+    var minWithdrawal by rememberSaveable(initialSettings.minWithdrawal) {
+        mutableStateOf(initialSettings.minWithdrawal.toString())
+    }
+    var sponsorTitle by rememberSaveable(initialSettings.sponsorTitle) {
+        mutableStateOf(initialSettings.sponsorTitle)
+    }
+    var sponsorSubtitle by rememberSaveable(initialSettings.sponsorSubtitle) {
+        mutableStateOf(initialSettings.sponsorSubtitle)
+    }
+    var sponsorUrl by rememberSaveable(initialSettings.sponsorUrl) {
+        mutableStateOf(initialSettings.sponsorUrl)
     }
 
     val fieldColors = OutlinedTextFieldDefaults.colors(
@@ -757,7 +854,7 @@ private fun AdminSettingsCard(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = "UPI, Support & Referral Configuration",
+                text = "UPI, Monetization & Referral Config",
                 style = MaterialTheme.typography.titleLarge,
                 color = BlazeOrange
             )
@@ -789,6 +886,32 @@ private fun AdminSettingsCard(
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()
             )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = withdrawalFeePercent,
+                    onValueChange = { withdrawalFeePercent = it.filter { ch -> ch.isDigit() }.take(2) },
+                    label = { Text("Withdraw Fee (0-20%)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    colors = fieldColors,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("settings_withdrawal_fee_input")
+                )
+                OutlinedTextField(
+                    value = minWithdrawal,
+                    onValueChange = { minWithdrawal = it.filter { ch -> ch.isDigit() }.take(4) },
+                    label = { Text("Min Withdraw (₹)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    colors = fieldColors,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("settings_min_withdrawal_input")
+                )
+            }
             OutlinedTextField(
                 value = referralBonus,
                 onValueChange = { referralBonus = it.filter { ch -> ch.isDigit() }.take(4) },
@@ -812,8 +935,64 @@ private fun AdminSettingsCard(
                     .fillMaxWidth()
                     .testTag("settings_app_download_url_input")
             )
+
+            Text(
+                text = "Partner / Sponsor Banner (Monetize Ad Slot)",
+                style = MaterialTheme.typography.titleMedium,
+                color = EmeraldWin,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+            OutlinedTextField(
+                value = sponsorTitle,
+                onValueChange = { sponsorTitle = it.take(100) },
+                label = { Text("Sponsor Headline (Optional)") },
+                singleLine = true,
+                colors = fieldColors,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("settings_sponsor_title_input")
+            )
+            OutlinedTextField(
+                value = sponsorSubtitle,
+                onValueChange = { sponsorSubtitle = it.take(180) },
+                label = { Text("Sponsor Description (Optional)") },
+                singleLine = true,
+                colors = fieldColors,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("settings_sponsor_subtitle_input")
+            )
+            OutlinedTextField(
+                value = sponsorUrl,
+                onValueChange = { sponsorUrl = it.take(300) },
+                label = { Text("Sponsor Link (https://... Optional)") },
+                singleLine = true,
+                colors = fieldColors,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("settings_sponsor_url_input")
+            )
+
             Button(
-                onClick = { onSave(upiId, upiName, adminPhone, referralBonus, appDownloadUrl) },
+                onClick = {
+                    onSave(
+                        AdminSettingsDraft(
+                            upiId = upiId,
+                            upiName = upiName,
+                            adminPhone = adminPhone,
+                            referralBonusText = referralBonus,
+                            appDownloadUrl = appDownloadUrl,
+                            withdrawalFeePercentText = withdrawalFeePercent,
+                            minWithdrawalText = minWithdrawal,
+                            sponsorTitle = sponsorTitle,
+                            sponsorSubtitle = sponsorSubtitle,
+                            sponsorUrl = sponsorUrl
+                        )
+                    )
+                },
                 enabled = !isBusy,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = EmeraldWin,

@@ -38,7 +38,12 @@ service cloud.firestore {
              data.upiName is string && data.upiName.size() >= 2 && data.upiName.size() <= 60 &&
              data.adminPhone is string && data.adminPhone.matches('^[0-9]{10}$') &&
              (!('referralBonus' in data) || (data.referralBonus is int && data.referralBonus >= 0 && data.referralBonus <= 1000)) &&
-             (!('appDownloadUrl' in data) || (data.appDownloadUrl is string && data.appDownloadUrl.size() <= 300 && (data.appDownloadUrl == '' || data.appDownloadUrl.matches('^https?://.*'))));
+             (!('appDownloadUrl' in data) || (data.appDownloadUrl is string && data.appDownloadUrl.size() <= 300 && (data.appDownloadUrl == '' || data.appDownloadUrl.matches('^https?://.*')))) &&
+             (!('withdrawalFeePercent' in data) || (data.withdrawalFeePercent is int && data.withdrawalFeePercent >= 0 && data.withdrawalFeePercent <= 20)) &&
+             (!('minWithdrawal' in data) || (data.minWithdrawal is int && data.minWithdrawal >= 1 && data.minWithdrawal <= 5000)) &&
+             (!('sponsorTitle' in data) || (data.sponsorTitle is string && data.sponsorTitle.size() <= 100)) &&
+             (!('sponsorSubtitle' in data) || (data.sponsorSubtitle is string && data.sponsorSubtitle.size() <= 180)) &&
+             (!('sponsorUrl' in data) || (data.sponsorUrl is string && data.sponsorUrl.size() <= 300 && (data.sponsorUrl == '' || data.sponsorUrl.matches('^https?://.*'))));
     }
 
     function isValidUserProfile(data) {
@@ -94,6 +99,8 @@ service cloud.firestore {
              data.phone is string && data.phone.matches('^[0-9]{10}$') &&
              data.ign is string && data.ign.size() >= 2 && data.ign.size() <= 30 &&
              data.amount is int && data.amount >= 1 && data.amount <= 100000 &&
+             (!('feeAmount' in data) || (data.feeAmount is int && data.feeAmount >= 0 && data.feeAmount < data.amount)) &&
+             (!('netPayout' in data) || (data.netPayout is int && data.netPayout >= 1 && data.netPayout == data.amount - data.get('feeAmount', 0))) &&
              data.upiId is string && data.upiId.size() >= 3 && data.upiId.size() <= 80 &&
              (data.status == 'Pending' || data.status == 'Paid' || data.status == 'Rejected');
     }
@@ -109,7 +116,7 @@ service cloud.firestore {
       allow create: if isAdmin() &&
                        settingId == 'app' &&
                        incoming().keys().hasAll(['upiId', 'upiName', 'adminPhone', 'updatedAt']) &&
-                       incoming().keys().hasOnly(['upiId', 'upiName', 'adminPhone', 'referralBonus', 'appDownloadUrl', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['upiId', 'upiName', 'adminPhone', 'referralBonus', 'appDownloadUrl', 'withdrawalFeePercent', 'minWithdrawal', 'sponsorTitle', 'sponsorSubtitle', 'sponsorUrl', 'updatedAt']) &&
                        isValidSettings(incoming()) &&
                        incoming().updatedAt is timestamp &&
                        incoming().updatedAt <= request.time;
@@ -118,7 +125,7 @@ service cloud.firestore {
                        isValidSettings(incoming()) &&
                        incoming().updatedAt is timestamp &&
                        incoming().updatedAt <= request.time &&
-                       incoming().diff(existing()).affectedKeys().hasOnly(['upiId', 'upiName', 'adminPhone', 'referralBonus', 'appDownloadUrl', 'updatedAt']);
+                       incoming().diff(existing()).affectedKeys().hasOnly(['upiId', 'upiName', 'adminPhone', 'referralBonus', 'appDownloadUrl', 'withdrawalFeePercent', 'minWithdrawal', 'sponsorTitle', 'sponsorSubtitle', 'sponsorUrl', 'updatedAt']);
       allow delete: if false;
     }
 
@@ -316,10 +323,18 @@ service cloud.firestore {
                        incoming().userId == request.auth.uid &&
                        incoming().status == 'Pending' &&
                        incoming().keys().hasAll(['userId', 'phone', 'ign', 'amount', 'upiId', 'status', 'createdAt', 'updatedAt']) &&
-                       incoming().keys().hasOnly(['userId', 'phone', 'ign', 'amount', 'upiId', 'status', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'phone', 'ign', 'amount', 'feeAmount', 'netPayout', 'upiId', 'status', 'createdAt', 'updatedAt']) &&
                        isValidWithdrawal(incoming()) &&
                        incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
                        incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       (
+                         !exists(/databases/$(database)/documents/settings/app) ||
+                         (
+                           incoming().amount >= get(/databases/$(database)/documents/settings/app).data.get('minWithdrawal', 1) &&
+                           incoming().get('feeAmount', 0) * 100 <= incoming().amount * get(/databases/$(database)/documents/settings/app).data.get('withdrawalFeePercent', 0) &&
+                           (incoming().get('feeAmount', 0) + 1) * 100 > incoming().amount * get(/databases/$(database)/documents/settings/app).data.get('withdrawalFeePercent', 0)
+                         )
+                       ) &&
                        getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.wallet == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.wallet - incoming().amount;
       allow update: if isAdmin() &&
                        isValidId(withdrawalId) &&
@@ -330,6 +345,8 @@ service cloud.firestore {
                        incoming().phone == existing().phone &&
                        incoming().ign == existing().ign &&
                        incoming().amount == existing().amount &&
+                       incoming().get('feeAmount', 0) == existing().get('feeAmount', 0) &&
+                       incoming().get('netPayout', existing().amount) == existing().get('netPayout', existing().amount) &&
                        incoming().upiId == existing().upiId &&
                        incoming().createdAt == existing().createdAt &&
                        incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&

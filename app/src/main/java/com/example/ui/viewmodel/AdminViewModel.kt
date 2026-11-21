@@ -27,6 +27,19 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+data class AdminSettingsDraft(
+    val upiId: String,
+    val upiName: String,
+    val adminPhone: String,
+    val referralBonusText: String,
+    val appDownloadUrl: String,
+    val withdrawalFeePercentText: String,
+    val minWithdrawalText: String,
+    val sponsorTitle: String,
+    val sponsorSubtitle: String,
+    val sponsorUrl: String
+)
+
 class AdminViewModel(
     private val repository: FirebattleRepository,
     private val currentUserId: String
@@ -158,20 +171,35 @@ class AdminViewModel(
         }
     }
 
-    fun saveSettings(
-        upiId: String,
-        upiName: String,
-        adminPhone: String,
-        referralBonusText: String,
-        appDownloadUrl: String
-    ) {
-        val bonus = referralBonusText.trim().ifEmpty { "0" }.toLongOrNull()
+    fun saveSettings(draft: AdminSettingsDraft) {
+        val bonus = draft.referralBonusText.trim().ifEmpty { "0" }.toLongOrNull()
+        val feePercent = draft.withdrawalFeePercentText.trim().ifEmpty { "0" }.toLongOrNull()
+        val minWd = draft.minWithdrawalText.trim().ifEmpty { "50" }.toLongOrNull()
         if (bonus == null) {
             _events.tryEmit("Enter a valid numeric referral bonus (₹0 - ₹1000).")
             return
         }
+        if (feePercent == null || feePercent !in 0L..20L) {
+            _events.tryEmit("Platform withdrawal fee must be between 0% and 20%.")
+            return
+        }
+        if (minWd == null || minWd !in 1L..5000L) {
+            _events.tryEmit("Minimum withdrawal must be between ₹1 and ₹5,000.")
+            return
+        }
         runAction("Settings saved to Firestore!") {
-            repository.saveAppSettings(upiId, upiName, adminPhone, bonus, appDownloadUrl)
+            repository.saveAppSettings(
+                upiId = draft.upiId,
+                upiName = draft.upiName,
+                adminPhone = draft.adminPhone,
+                referralBonus = bonus,
+                appDownloadUrl = draft.appDownloadUrl,
+                withdrawalFeePercent = feePercent,
+                minWithdrawal = minWd,
+                sponsorTitle = draft.sponsorTitle,
+                sponsorSubtitle = draft.sponsorSubtitle,
+                sponsorUrl = draft.sponsorUrl
+            )
         }
     }
 

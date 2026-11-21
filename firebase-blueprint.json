@@ -42,6 +42,26 @@
           "type": "string",
           "description": "Direct app download or website link shared inside player referral invites."
         },
+        "withdrawalFeePercent": {
+          "type": "integer",
+          "description": "Organizer platform fee percentage (0-20) deducted from withdrawals."
+        },
+        "minWithdrawal": {
+          "type": "integer",
+          "description": "Minimum withdrawal amount in INR allowed for players."
+        },
+        "sponsorTitle": {
+          "type": "string",
+          "description": "Optional paid sponsor or partner promo banner headline."
+        },
+        "sponsorSubtitle": {
+          "type": "string",
+          "description": "Optional sponsor promo description text."
+        },
+        "sponsorUrl": {
+          "type": "string",
+          "description": "Optional sponsor target URL opened when players tap the banner."
+        },
         "updatedAt": {
           "type": "string",
           "format": "date-time",
@@ -283,7 +303,15 @@
         },
         "amount": {
           "type": "integer",
-          "description": "Withdrawal amount in INR."
+          "description": "Gross withdrawal amount deducted from player wallet in INR."
+        },
+        "feeAmount": {
+          "type": "integer",
+          "description": "Platform fee retained by organizer in INR."
+        },
+        "netPayout": {
+          "type": "integer",
+          "description": "Net UPI payout amount sent to player after platform fee."
         },
         "upiId": {
           "type": "string",

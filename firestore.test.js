@@ -601,3 +601,120 @@ test("Refer & Earn enforces unique code claim, single redemption, non-self refer
   await assertFails(charlieDb.collection("referrals").where("referrerUid", "==", ALICE_UID).get());
 });
 
+test("Organizer withdrawal fee %, minWithdrawal, and sponsor URL rules are enforced", async () => {
+  const adminDb = adminContext().firestore();
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID, { email: "alice@test.com", email_verified: true }).firestore();
+
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().collection("users").doc(ALICE_UID).set({
+      userId: ALICE_UID,
+      email: "alice@test.com",
+      ign: "AliceFF",
+      gameUid: "99887766",
+      phone: "9876543210",
+      wallet: 300,
+      createdAt: pastDate(10000),
+      updatedAt: pastDate(10000),
+    });
+  });
+
+  // Reject fee > 20% or unsafe sponsorUrl
+  await assertFails(
+    adminDb.collection("settings").doc("app").set({
+      upiId: "firebattle@upi",
+      upiName: "Firebattle Esports",
+      adminPhone: "9876543210",
+      withdrawalFeePercent: 25,
+      minWithdrawal: 50,
+      updatedAt: pastDate(5000),
+    })
+  );
+  await assertFails(
+    adminDb.collection("settings").doc("app").set({
+      upiId: "firebattle@upi",
+      upiName: "Firebattle Esports",
+      adminPhone: "9876543210",
+      withdrawalFeePercent: 10,
+      minWithdrawal: 50,
+      sponsorUrl: "javascript:alert(1)",
+      updatedAt: pastDate(5000),
+    })
+  );
+
+  // Admin configures 10% withdrawal fee, min ₹50, and sponsor banner
+  await assertSucceeds(
+    adminDb.collection("settings").doc("app").set({
+      upiId: "firebattle@upi",
+      upiName: "Firebattle Esports",
+      adminPhone: "9876543210",
+      withdrawalFeePercent: 10,
+      minWithdrawal: 50,
+      sponsorTitle: "VIP Diamond Store",
+      sponsorSubtitle: "10% Extra Diamonds for Firebattle Players",
+      sponsorUrl: "https://example.com/shop",
+      updatedAt: pastDate(4000),
+    })
+  );
+
+  // Withdrawal below minWithdrawal (₹40 < ₹50) fails
+  const lowBatch = aliceDb.batch();
+  lowBatch.set(aliceDb.collection("withdrawals").doc("wd_low"), {
+    userId: ALICE_UID,
+    phone: "9876543210",
+    ign: "AliceFF",
+    amount: 40,
+    feeAmount: 4,
+    netPayout: 36,
+    upiId: "alice@ybl",
+    status: "Pending",
+    createdAt: pastDate(3000),
+    updatedAt: pastDate(3000),
+  });
+  lowBatch.update(aliceDb.collection("users").doc(ALICE_UID), {
+    wallet: 260,
+    updatedAt: pastDate(3000),
+  });
+  await assertFails(lowBatch.commit());
+
+  // Withdrawal skipping platform fee (feeAmount=0 instead of 10 on ₹100) fails
+  const cheatBatch = aliceDb.batch();
+  cheatBatch.set(aliceDb.collection("withdrawals").doc("wd_cheat"), {
+    userId: ALICE_UID,
+    phone: "9876543210",
+    ign: "AliceFF",
+    amount: 100,
+    feeAmount: 0,
+    netPayout: 100,
+    upiId: "alice@ybl",
+    status: "Pending",
+    createdAt: pastDate(2000),
+    updatedAt: pastDate(2000),
+  });
+  cheatBatch.update(aliceDb.collection("users").doc(ALICE_UID), {
+    wallet: 200,
+    updatedAt: pastDate(2000),
+  });
+  await assertFails(cheatBatch.commit());
+
+  // Valid withdrawal of ₹100 with ₹10 fee and ₹90 netPayout succeeds
+  const okBatch = aliceDb.batch();
+  okBatch.set(aliceDb.collection("withdrawals").doc("wd_ok"), {
+    userId: ALICE_UID,
+    phone: "9876543210",
+    ign: "AliceFF",
+    amount: 100,
+    feeAmount: 10,
+    netPayout: 90,
+    upiId: "alice@ybl",
+    status: "Pending",
+    createdAt: pastDate(1000),
+    updatedAt: pastDate(1000),
+  });
+  okBatch.update(aliceDb.collection("users").doc(ALICE_UID), {
+    wallet: 200,
+    updatedAt: pastDate(1000),
+  });
+  await assertSucceeds(okBatch.commit());
+});
+
+

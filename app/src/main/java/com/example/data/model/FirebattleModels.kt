@@ -72,6 +72,11 @@ data class AppSettings(
     val adminPhone: String = "9876543210",
     val referralBonus: Long = 10L,
     val appDownloadUrl: String = DEFAULT_APP_DOWNLOAD_URL,
+    val withdrawalFeePercent: Long = 5L,
+    val minWithdrawal: Long = 50L,
+    val sponsorTitle: String = "",
+    val sponsorSubtitle: String = "",
+    val sponsorUrl: String = "",
     @ServerTimestamp val updatedAt: Timestamp? = null
 )
 
@@ -162,8 +167,13 @@ data class WithdrawalRequest(
     val phone: String = "",
     val ign: String = "",
     val amount: Long = 0L,
+    val feeAmount: Long = 0L,
+    val netPayout: Long = 0L,
     val upiId: String = "",
     val status: String = "Pending",
     @ServerTimestamp val createdAt: Timestamp? = null,
     @ServerTimestamp val updatedAt: Timestamp? = null
-)
+) {
+    val resolvedNetPayout: Long
+        get() = if (netPayout > 0L) netPayout else (amount - feeAmount).coerceAtLeast(0L)
+}
