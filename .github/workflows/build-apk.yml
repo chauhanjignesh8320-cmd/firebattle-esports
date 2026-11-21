@@ -61,7 +61,13 @@ jobs:
           fi
 
       - name: Build Debug APK
-        run: gradle :app:assembleDebug --no-daemon --stacktrace -Dorg.gradle.jvmargs="-Xmx3g -Dfile.encoding=UTF-8"
+        run: |
+          set -o pipefail
+          if ! gradle :app:assembleDebug --no-daemon --no-configuration-cache --console=plain -Dorg.gradle.jvmargs="-Xmx3g -Dfile.encoding=UTF-8" 2>&1 | tee gradle_build.log; then
+            echo "=== EXACT GRADLE ERROR SUMMARY ==="
+            grep -A 30 "FAILURE:" gradle_build.log || tail -n 40 gradle_build.log
+            exit 1
+          fi
 
       - name: Rename APK for direct download
         run: cp app/build/outputs/apk/debug/app-debug.apk Firebattle.apk
