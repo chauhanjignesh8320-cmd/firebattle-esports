@@ -70,9 +70,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.data.model.AppSettings
-import com.example.data.model.MatchMode
 import com.example.data.model.MatchRegistration
-import com.example.data.model.TeamFormat
 import com.example.data.model.TournamentMatch
 import com.example.data.model.UserProfile
 import com.example.ui.theme.ArenaInkDark
@@ -103,7 +101,6 @@ data class ArenaFilterSelection(
 private data class EsportGameTile(
     val id: String,
     val title: String,
-    val badge: String,
     @DrawableRes val imageRes: Int,
     val selection: ArenaFilterSelection
 )
@@ -170,85 +167,55 @@ fun PlayerHomeArenaSection(
             EsportGameTile(
                 id = "bgmi",
                 title = "BGMI",
-                badge = "BR",
                 imageRes = R.drawable.img_game_bgmi,
                 selection = ArenaFilterSelection(game = "BGMI", title = "BGMI Tournaments")
             ),
             EsportGameTile(
-                id = "ffmax1",
+                id = "ffmax",
                 title = "FF MAX",
-                badge = "MAX",
                 imageRes = R.drawable.img_game_ffmax,
                 selection = ArenaFilterSelection(game = "Free Fire MAX", title = "Free Fire MAX")
             ),
             EsportGameTile(
-                id = "cs1",
-                title = "CS 1vs1",
-                badge = "1v1",
+                id = "clash_squad",
+                title = "CLASH SQUAD",
                 imageRes = R.drawable.img_game_clash,
-                selection = ArenaFilterSelection(mode = "Clash Squad", format = "1vs1", title = "CS 1vs1 Duels")
+                selection = ArenaFilterSelection(mode = "Clash Squad", title = "Clash Squad")
             ),
             EsportGameTile(
-                id = "bgmi_tdm",
-                title = "BGMI TDM",
-                badge = "TDM",
-                imageRes = R.drawable.img_banner_promo,
-                selection = ArenaFilterSelection(game = "BGMI", format = "4vs4", title = "BGMI TDM & 4vs4")
+                id = "format_1v1",
+                title = "1 vs 1",
+                imageRes = R.drawable.img_tile_1v1,
+                selection = ArenaFilterSelection(format = "1vs1", title = "1 vs 1 Matches")
             ),
             EsportGameTile(
-                id = "ff_custom",
-                title = "FF CUSTOM",
-                badge = "FULL",
-                imageRes = R.drawable.img_game_ffmax,
-                selection = ArenaFilterSelection(game = "Free Fire MAX", mode = "Custom", format = "Full Map", title = "FF Full Map Custom")
+                id = "format_2v2",
+                title = "2 vs 2",
+                imageRes = R.drawable.img_tile_2v2,
+                selection = ArenaFilterSelection(format = "2vs2", title = "2 vs 2 Matches")
             ),
             EsportGameTile(
-                id = "cs2",
-                title = "CS 2vs2",
-                badge = "2v2",
-                imageRes = R.drawable.img_game_clash,
-                selection = ArenaFilterSelection(mode = "Clash Squad", format = "2vs2", title = "CS 2vs2 Duo")
+                id = "format_4v4",
+                title = "4 vs 4",
+                imageRes = R.drawable.img_tile_4v4,
+                selection = ArenaFilterSelection(format = "4vs4", title = "4 vs 4 Squads")
             ),
             EsportGameTile(
                 id = "lone_wolf",
                 title = "LONE WOLF",
-                badge = "LW",
                 imageRes = R.drawable.img_game_lonewolf,
                 selection = ArenaFilterSelection(mode = "Lone Wolf", title = "Lone Wolf Matches")
             ),
             EsportGameTile(
-                id = "ff_survival",
-                title = "FF SURVIVAL",
-                badge = "ROOM",
-                imageRes = R.drawable.img_arena_hero,
-                selection = ArenaFilterSelection(game = "Free Fire MAX", mode = "Custom", title = "FF Survival Rooms")
-            ),
-            EsportGameTile(
-                id = "lw_1v1",
-                title = "LW 1vs1",
-                badge = "1v1",
-                imageRes = R.drawable.img_game_lonewolf,
-                selection = ArenaFilterSelection(mode = "Lone Wolf", format = "1vs1", title = "Lone Wolf 1vs1")
-            ),
-            EsportGameTile(
-                id = "lw_2v2",
-                title = "LW 2vs2",
-                badge = "2v2",
-                imageRes = R.drawable.img_game_lonewolf,
-                selection = ArenaFilterSelection(mode = "Lone Wolf", format = "2vs2", title = "Lone Wolf 2vs2")
-            ),
-            EsportGameTile(
-                id = "cs_4v4",
-                title = "CS 4vs4",
-                badge = "4v4",
-                imageRes = R.drawable.img_banner_promo,
-                selection = ArenaFilterSelection(mode = "Clash Squad", format = "4vs4", title = "CS 4vs4 Squad")
+                id = "full_map",
+                title = "FULL MAP",
+                imageRes = R.drawable.img_tile_fullmap,
+                selection = ArenaFilterSelection(mode = "Custom", format = "Full Map", title = "Full Map Custom")
             ),
             EsportGameTile(
                 id = "all_live",
                 title = "ALL MATCHES",
-                badge = "ALL",
-                imageRes = R.drawable.img_trophy_banner,
+                imageRes = R.drawable.img_tile_all_matches,
                 selection = ArenaFilterSelection(title = "All Live Tournaments")
             )
         )
@@ -467,19 +434,8 @@ fun PlayerHomeArenaSection(
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 rowTiles.forEach { tile ->
-                    val matchingCount = remember(liveMatches, tile) {
-                        liveMatches.count { match ->
-                            val sel = tile.selection
-                            val modeLabel = MatchMode.fromRaw(match.matchMode).label
-                            val formatLabel = TeamFormat.fromRaw(match.teamFormat).label
-                            (sel.game == "All" || match.game == sel.game) &&
-                                (sel.mode == "All" || modeLabel == sel.mode) &&
-                                (sel.format == "All" || formatLabel == sel.format)
-                        }
-                    }
                     EsportGameGridCard(
                         tile = tile,
-                        liveCount = matchingCount,
                         onClick = { onOpenArenaFilter(tile.selection) },
                         modifier = Modifier.weight(1f)
                     )
@@ -726,62 +682,27 @@ private fun MyContestTile(
 @Composable
 private fun EsportGameGridCard(
     tile: EsportGameTile,
-    liveCount: Int,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Surface(
         color = ArenaSlateDark,
-        shape = RoundedCornerShape(10.dp),
-        border = BorderStroke(1.dp, if (liveCount > 0) BlazeOrange.copy(alpha = 0.6f) else ArenaSlateBorder),
+        shape = RoundedCornerShape(8.dp),
+        border = BorderStroke(1.dp, ArenaSlateBorder),
         modifier = modifier
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
             .testTag("game_tile_${tile.id}")
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            Box(
+            Image(
+                painter = painterResource(id = tile.imageRes),
+                contentDescription = tile.title,
+                contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(1.02f)
-            ) {
-                Image(
-                    painter = painterResource(id = tile.imageRes),
-                    contentDescription = tile.title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-                Surface(
-                    color = ArenaObsidian.copy(alpha = 0.85f),
-                    shape = RoundedCornerShape(bottomEnd = 8.dp),
-                    modifier = Modifier.align(Alignment.TopStart)
-                ) {
-                    Text(
-                        text = tile.badge,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = CoinGold,
-                        fontWeight = FontWeight.ExtraBold,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
-                }
-                if (liveCount > 0) {
-                    Surface(
-                        color = EmeraldWin,
-                        shape = RoundedCornerShape(50),
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(5.dp)
-                    ) {
-                        Text(
-                            text = "$liveCount LIVE",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = ArenaInkDark,
-                            fontWeight = FontWeight.ExtraBold,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-                }
-            }
+                    .aspectRatio(1f)
+            )
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
