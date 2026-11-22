@@ -1,8 +1,12 @@
 package com.example.ui.screens
 
+import android.Manifest
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -38,8 +42,10 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.CardGiftcard
 import androidx.compose.material.icons.outlined.EmojiEvents
@@ -107,7 +113,11 @@ import com.example.ui.components.ErrorBannerCard
 import com.example.ui.components.StatTile
 import com.example.ui.components.StatusBadge
 import com.example.ui.components.UpiQrPaymentCard
+import com.example.ui.components.buildMatchShareText
 import com.example.ui.components.formatTimestampShort
+import com.example.ui.components.hasInternetConnection
+import com.example.ui.components.hasNotificationPermission
+import com.example.ui.components.notifyRoomCredentialsReady
 import com.example.ui.theme.ArenaObsidian
 import com.example.ui.theme.ArenaSlateBorder
 import com.example.ui.theme.ArenaSlateDark
@@ -279,32 +289,69 @@ fun PlayerDashboardScreen(
 
     if (pendingJoinMatch != null) {
         val match = pendingJoinMatch!!
+        val dialogContext = LocalContext.current
+        val hasEnoughBalance = profile.wallet >= match.entry
+        val shortage = (match.entry - profile.wallet).coerceAtLeast(0L)
         AlertDialog(
             onDismissRequest = { pendingJoinMatch = null },
             containerColor = ArenaSlateDark,
             title = {
                 Text(
-                    text = "Confirm Match Entry",
+                    text = if (hasEnoughBalance) "Confirm Match Entry" else "Insufficient Wallet Balance",
                     style = MaterialTheme.typography.titleLarge,
-                    color = TextPrimary
+                    color = if (hasEnoughBalance) TextPrimary else BlazeOrange
                 )
             },
             text = {
-                Text(
-                    text = "Join ${match.title} (${match.game})? Entry fee ₹${match.entry} will be deducted from your wallet (Current: ₹${profile.wallet}).",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary
-                )
+                if (hasEnoughBalance) {
+                    val entryText = if (match.entry == 0L) {
+                        "Free Entry (₹0) — Tap Join Now to reserve your slot!"
+                    } else {
+                        "Entry fee ₹${match.entry} will be deducted from your wallet (Current: ₹${profile.wallet})."
+                    }
+                    Text(
+                        text = "Join ${match.title} (${match.game})?\n$entryText",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextSecondary
+                    )
+                } else {
+                    Text(
+                        text = "${match.title} entry fee is ₹${match.entry}, and your current wallet balance is ₹${profile.wallet}.\n\nAdd ₹$shortage to your Wallet via UPI QR to join this match.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextSecondary
+                    )
+                }
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        onJoinMatch(match)
-                        pendingJoinMatch = null
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = BlazeOrange)
-                ) {
-                    Text("Join (₹${match.entry})")
+                if (hasEnoughBalance) {
+                    Button(
+                        onClick = {
+                            if (!hasInternetConnection(dialogContext)) {
+                                onCopyFeedback("No internet connection. Turn on mobile data or Wi-Fi.")
+                            } else {
+                                onJoinMatch(match)
+                            }
+                            pendingJoinMatch = null
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = BlazeOrange),
+                        modifier = Modifier.testTag("confirm_join_match_button")
+                    ) {
+                        Text(if (match.entry == 0L) "Join Free" else "Join (₹${match.entry})")
+                    }
+                } else {
+                    Button(
+                        onClick = {
+                            pendingJoinMatch = null
+                            selectedTab = PlayerTab.WALLET
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = EmeraldWin,
+                            contentColor = ArenaObsidian
+                        ),
+                        modifier = Modifier.testTag("dialog_go_to_wallet_button")
+                    ) {
+                        Text(stringResource(R.string.go_to_wallet), fontWeight = FontWeight.Bold)
+                    }
                 }
             },
             dismissButton = {
@@ -489,12 +536,38 @@ private fun TournamentsSection(
     onCopyFeedback: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     var gameFilter by rememberSaveable { mutableStateOf("All") }
     var modeFilter by rememberSaveable { mutableStateOf("All") }
     var formatFilter by rememberSaveable { mutableStateOf("All") }
+    var notificationsGranted by remember { mutableStateOf(hasNotificationPermission(context)) }
+    var alertsDismissed by rememberSaveable { mutableStateOf(false) }
+    val notificationLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        notificationsGranted = granted
+        onCopyFeedback(
+            if (granted) "Match Room ID notifications enabled!" else "You can enable notifications anytime in Phone Settings."
+        )
+    }
+
     val joinedIds = (joinedMatchIdsState as? UiState.Success)?.data ?: emptySet()
     val settings = (settingsState as? UiState.Success)?.data ?: AppSettings()
     val allMatches = (matchesState as? UiState.Success)?.data ?: emptyList()
+    val previousRoomIds = remember { mutableMapOf<String, String>() }
+
+    LaunchedEffect(allMatches, joinedIds, notificationsGranted) {
+        allMatches.forEach { match ->
+            val prevRoom = previousRoomIds[match.id]
+            if (prevRoom != null && prevRoom.isBlank() && match.roomId.isNotBlank() && match.id in joinedIds) {
+                if (notificationsGranted) {
+                    notifyRoomCredentialsReady(context, match)
+                }
+            }
+            previousRoomIds[match.id] = match.roomId
+        }
+    }
+
     val gameMatches = remember(allMatches, gameFilter) {
         allMatches.filter { gameFilter == "All" || it.game == gameFilter }
     }
@@ -506,6 +579,66 @@ private fun TournamentsSection(
     ) {
         item {
             PlayerProfileWalletBar(profile = profile, onEditProfile = onEditProfile)
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !notificationsGranted && !alertsDismissed) {
+            item {
+                Surface(
+                    color = ArenaSlateDark,
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, EmeraldWin.copy(alpha = 0.45f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.NotificationsActive,
+                            contentDescription = stringResource(R.string.enable_room_alerts),
+                            tint = EmeraldWin,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Get Room ID & Pass Alerts",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = TextPrimary
+                            )
+                            Text(
+                                text = "Allow notifications so you never miss Custom match Room ID.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
+                            )
+                        }
+                        Button(
+                            onClick = {
+                                notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = EmeraldWin,
+                                contentColor = ArenaObsidian
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier
+                                .heightIn(min = 48.dp)
+                                .testTag("enable_notifications_button")
+                        ) {
+                            Text("Allow", fontWeight = FontWeight.Bold)
+                        }
+                        TextButton(
+                            onClick = { alertsDismissed = true },
+                            modifier = Modifier.heightIn(min = 48.dp)
+                        ) {
+                            Text("Later", color = TextSecondary)
+                        }
+                    }
+                }
+            }
         }
 
         if (settings.sponsorTitle.isNotBlank()) {
@@ -662,6 +795,8 @@ private fun TournamentsSection(
                     items(filtered, key = { it.id }) { match ->
                         TournamentMatchCard(
                             match = match,
+                            settings = settings,
+                            referralCode = profile.referralCode,
                             alreadyJoined = match.id in joinedIds,
                             isBusy = isBusy,
                             onJoinClick = { onRequestJoin(match) },
@@ -755,11 +890,14 @@ private fun SponsoredPartnerCard(
 @Composable
 private fun TournamentMatchCard(
     match: TournamentMatch,
+    settings: AppSettings,
+    referralCode: String,
     alreadyJoined: Boolean,
     isBusy: Boolean,
     onJoinClick: () -> Unit,
     onCopyFeedback: (String) -> Unit
 ) {
+    val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val isFull = match.joinedCount >= match.slots
     val slotsRemaining = (match.slots - match.joinedCount).coerceAtLeast(0L)
@@ -844,26 +982,55 @@ private fun TournamentMatchCard(
                         color = TextSecondary
                     )
                 }
-                Surface(
-                    color = ArenaSlateSurface,
-                    shape = RoundedCornerShape(10.dp),
-                    border = BorderStroke(1.dp, if (isFull) BlazeOrange.copy(alpha = 0.6f) else ArenaSlateBorder)
+                Row(
+                    verticalAlignment = Alignment.Top,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.End,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    IconButton(
+                        onClick = {
+                            val shareText = buildMatchShareText(match, settings, referralCode)
+                            val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, shareText)
+                            }
+                            runCatching {
+                                context.startActivity(Intent.createChooser(sendIntent, "Share Match Invite"))
+                            }.onFailure {
+                                clipboard.setText(AnnotatedString(shareText))
+                                onCopyFeedback("Match invite copied!")
+                            }
+                        },
+                        modifier = Modifier
+                            .minimumInteractiveComponentSize()
+                            .testTag("share_match_button_${match.id}")
                     ) {
-                        Text(
-                            text = "${match.joinedCount}/${match.slots} Slots",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = if (isFull) BlazeOrange else TextPrimary,
-                            fontWeight = FontWeight.Bold
+                        Icon(
+                            imageVector = Icons.Filled.Share,
+                            contentDescription = stringResource(R.string.share_match_invite),
+                            tint = BlazeOrange
                         )
-                        Text(
-                            text = if (isFull) "Room Full" else "$slotsRemaining Open",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (isFull) BlazeOrange else EmeraldWin
-                        )
+                    }
+                    Surface(
+                        color = ArenaSlateSurface,
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, if (isFull) BlazeOrange.copy(alpha = 0.6f) else ArenaSlateBorder)
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.End,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = "${match.joinedCount}/${match.slots} Slots",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (isFull) BlazeOrange else TextPrimary,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = if (isFull) "Room Full" else "$slotsRemaining Open",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isFull) BlazeOrange else EmeraldWin
+                            )
+                        }
                     }
                 }
             }

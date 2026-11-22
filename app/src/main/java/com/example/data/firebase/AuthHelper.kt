@@ -109,43 +109,45 @@ fun onGoogleSignInClicked(
         .addCredentialOption(signInOption)
         .build()
 
+    suspend fun requestWithFallbackGoogleId(): androidx.credentials.Credential {
+        withContext(NonCancellable) {
+            runCatching {
+                credentialManager.clearCredentialState(ClearCredentialStateRequest())
+            }
+        }
+        val fallbackOption = GetGoogleIdOption.Builder()
+            .setFilterByAuthorizedAccounts(false)
+            .setAutoSelectEnabled(false)
+            .setServerClientId(clientId)
+            .build()
+        val fallbackRequest = GetCredentialRequest.Builder()
+            .addCredentialOption(fallbackOption)
+            .build()
+        return credentialManager.getCredential(activity, fallbackRequest).credential
+    }
+
     scope.launch {
         try {
             val cred = try {
                 credentialManager.getCredential(activity, primaryRequest).credential
             } catch (e: NoCredentialException) {
                 Log.w(TAG, "Primary GetSignInWithGoogleOption returned NoCredentialException; retrying with GetGoogleIdOption", e)
-                val fallbackOption = GetGoogleIdOption.Builder()
-                    .setFilterByAuthorizedAccounts(false)
-                    .setAutoSelectEnabled(false)
-                    .setServerClientId(clientId)
-                    .build()
-                val fallbackRequest = GetCredentialRequest.Builder()
-                    .addCredentialOption(fallbackOption)
-                    .build()
-                credentialManager.getCredential(activity, fallbackRequest).credential
+                requestWithFallbackGoogleId()
             } catch (e: GetCredentialUnsupportedException) {
                 Log.w(TAG, "Primary GetSignInWithGoogleOption unsupported; retrying with GetGoogleIdOption", e)
-                val fallbackOption = GetGoogleIdOption.Builder()
-                    .setFilterByAuthorizedAccounts(false)
-                    .setAutoSelectEnabled(false)
-                    .setServerClientId(clientId)
-                    .build()
-                val fallbackRequest = GetCredentialRequest.Builder()
-                    .addCredentialOption(fallbackOption)
-                    .build()
-                credentialManager.getCredential(activity, fallbackRequest).credential
+                requestWithFallbackGoogleId()
             } catch (e: GetCredentialProviderConfigurationException) {
                 Log.w(TAG, "Primary GetSignInWithGoogleOption provider config error; retrying with GetGoogleIdOption", e)
-                val fallbackOption = GetGoogleIdOption.Builder()
-                    .setFilterByAuthorizedAccounts(false)
-                    .setAutoSelectEnabled(false)
-                    .setServerClientId(clientId)
-                    .build()
-                val fallbackRequest = GetCredentialRequest.Builder()
-                    .addCredentialOption(fallbackOption)
-                    .build()
-                credentialManager.getCredential(activity, fallbackRequest).credential
+                requestWithFallbackGoogleId()
+            } catch (e: GetCredentialCancellationException) {
+                val msg = e.message.orEmpty()
+                val isReauthError = msg.contains("reauth", ignoreCase = true) || msg.contains("[16]")
+                if (isReauthError) {
+                    Log.w(TAG, "Primary GetSignInWithGoogleOption hit [16] reauth failure; clearing state and retrying with GetGoogleIdOption", e)
+                    requestWithFallbackGoogleId()
+                } else {
+                    throw e
+                }
             }
 
             if (cred is CustomCredential && cred.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
@@ -161,7 +163,12 @@ fun onGoogleSignInClicked(
             Log.w(TAG, "Google Sign-In flow cancelled or dismissed: ${e.message}", e)
             onAuthCancelled()
             val detail = e.message?.takeIf { it.isNotBlank() }
-            if (detail != null) {
+            if (detail != null && (detail.contains("reauth", ignoreCase = true) || detail.contains("[16]"))) {
+                onAuthError(
+                    "Google Sign-In [16] Account reauth failed. Ensure this phone has a verified Google account " +
+                        "and the APK signing SHA-1 is added in Firebase Console."
+                )
+            } else if (detail != null) {
                 onAuthError("Google Sign-In cancelled: $detail")
             } else {
                 onAuthError("Google Sign-In was dismissed before selecting an account.")

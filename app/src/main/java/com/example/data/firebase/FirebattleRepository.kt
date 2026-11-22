@@ -543,6 +543,7 @@ class FirebattleRepository(
                 val existingReg = tx.get(regRef)
 
                 if (!matchSnap.exists()) throw IllegalStateException("Tournament not found.")
+                if (!userSnap.exists()) throw IllegalStateException("Please complete your player profile first.")
                 if (existingReg.exists()) throw IllegalStateException("You have already joined this match.")
 
                 val status = matchSnap.getString("status") ?: ""
@@ -558,14 +559,18 @@ class FirebattleRepository(
                     throw IllegalStateException("Insufficient wallet balance (₹$currentWallet). Deposit ₹${entry - currentWallet} more.")
                 }
 
+                val playerIgn = userSnap.getString("ign")?.takeIf { it.isNotBlank() } ?: profile.ign
+                val playerGameUid = userSnap.getString("gameUid")?.takeIf { it.isNotBlank() } ?: profile.gameUid
+                val playerPhone = userSnap.getString("phone")?.takeIf { it.isNotBlank() } ?: profile.phone
+
                 tx.set(
                     regRef,
                     mapOf(
                         "matchId" to matchId,
                         "userId" to uid,
-                        "ign" to profile.ign,
-                        "gameUid" to profile.gameUid,
-                        "phone" to profile.phone,
+                        "ign" to playerIgn,
+                        "gameUid" to playerGameUid,
+                        "phone" to playerPhone,
                         "entryPaid" to entry,
                         "createdAt" to FieldValue.serverTimestamp()
                     )

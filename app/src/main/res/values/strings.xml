@@ -50,4 +50,7 @@
     <string name="profile_save_changes">Save Profile Changes</string>
     <string name="admin_withdraw_profit_button">Withdraw Profit</string>
     <string name="admin_owner_payouts_title">Owner Profit Withdrawals</string>
+    <string name="enable_room_alerts">Enable Room Alerts</string>
+    <string name="share_match_invite">Share Match</string>
+    <string name="go_to_wallet">Add Money (Wallet)</string>
 </resources>

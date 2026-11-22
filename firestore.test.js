@@ -858,6 +858,167 @@ test("Match modes (Lone Wolf, Clash Squad, Custom) and team formats (1vs1, 2vs2,
   );
 });
 
+test("Multiple players from separate devices can create profiles and join Free & Paid Custom matches", async () => {
+  const adminDb = adminContext().firestore();
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID, { email: "alice@test.com", email_verified: true }).firestore();
+  const bobDb = testEnv.authenticatedContext(BOB_UID, { email: "bob@test.com", email_verified: true }).firestore();
+
+  // Admin publishes a Free Custom 1vs1 (entry = 0) and a Paid Custom 4vs4 (entry = 50)
+  await assertSucceeds(
+    adminDb.collection("matches").doc("free_custom_1v1").set({
+      title: "Free Custom Room #1",
+      game: "Free Fire MAX",
+      matchMode: "Custom",
+      teamFormat: "1vs1",
+      matchTime: "Tonight 8:00 PM",
+      mapName: "Bermuda",
+      entry: 0,
+      perKill: 0,
+      prize: 0,
+      slots: 2,
+      joinedCount: 0,
+      roomId: "",
+      roomPass: "",
+      status: "LIVE",
+      createdBy: ADMIN_UID,
+      createdAt: pastDate(10000),
+      updatedAt: pastDate(10000),
+    })
+  );
+
+  await assertSucceeds(
+    adminDb.collection("matches").doc("paid_custom_4v4").set({
+      title: "Paid Custom 4v4",
+      game: "Free Fire MAX",
+      matchMode: "Custom",
+      teamFormat: "4vs4",
+      matchTime: "Tonight 9:00 PM",
+      mapName: "Kalahari",
+      entry: 50,
+      perKill: 10,
+      prize: 320,
+      slots: 8,
+      joinedCount: 0,
+      roomId: "",
+      roomPass: "",
+      status: "LIVE",
+      createdBy: ADMIN_UID,
+      createdAt: pastDate(9000),
+      updatedAt: pastDate(9000),
+    })
+  );
+
+  // Alice and Bob create fresh profiles on two separate devices
+  const aliceCreate = aliceDb.batch();
+  aliceCreate.set(aliceDb.collection("users").doc(ALICE_UID), {
+    userId: ALICE_UID,
+    email: "alice@test.com",
+    ign: "AliceDevice1",
+    gameUid: "111222333",
+    phone: "9876500001",
+    wallet: 0,
+    referralCode: "FBALICE9",
+    referredByUid: "",
+    referredByCode: "",
+    referralCount: 0,
+    referralEarnings: 0,
+    createdAt: pastDate(8000),
+    updatedAt: pastDate(8000),
+  });
+  aliceCreate.set(aliceDb.collection("referralCodes").doc("FBALICE9"), {
+    code: "FBALICE9",
+    userId: ALICE_UID,
+    ign: "AliceDevice1",
+    createdAt: pastDate(8000),
+  });
+  await assertSucceeds(aliceCreate.commit());
+
+  const bobCreate = bobDb.batch();
+  bobCreate.set(bobDb.collection("users").doc(BOB_UID), {
+    userId: BOB_UID,
+    email: "bob@test.com",
+    ign: "BobDevice2",
+    gameUid: "444555666",
+    phone: "9876500002",
+    wallet: 0,
+    referralCode: "FBBOB999",
+    referredByUid: "",
+    referredByCode: "",
+    referralCount: 0,
+    referralEarnings: 0,
+    createdAt: pastDate(7000),
+    updatedAt: pastDate(7000),
+  });
+  bobCreate.set(bobDb.collection("referralCodes").doc("FBBOB999"), {
+    code: "FBBOB999",
+    userId: BOB_UID,
+    ign: "BobDevice2",
+    createdAt: pastDate(7000),
+  });
+  await assertSucceeds(bobCreate.commit());
+
+  // Both Alice (slot 1) and Bob (slot 2) join the Free Custom match (entry = 0)
+  const aliceFreeJoin = aliceDb.batch();
+  aliceFreeJoin.set(aliceDb.collection("registrations").doc(`free_custom_1v1_${ALICE_UID}`), {
+    matchId: "free_custom_1v1",
+    userId: ALICE_UID,
+    ign: "AliceDevice1",
+    gameUid: "111222333",
+    phone: "9876500001",
+    entryPaid: 0,
+    createdAt: pastDate(6000),
+  });
+  aliceFreeJoin.update(aliceDb.collection("matches").doc("free_custom_1v1"), {
+    joinedCount: 1,
+    updatedAt: pastDate(6000),
+  });
+  await assertSucceeds(aliceFreeJoin.commit());
+
+  const bobFreeJoin = bobDb.batch();
+  bobFreeJoin.set(bobDb.collection("registrations").doc(`free_custom_1v1_${BOB_UID}`), {
+    matchId: "free_custom_1v1",
+    userId: BOB_UID,
+    ign: "BobDevice2",
+    gameUid: "444555666",
+    phone: "9876500002",
+    entryPaid: 0,
+    createdAt: pastDate(5000),
+  });
+  bobFreeJoin.update(bobDb.collection("matches").doc("free_custom_1v1"), {
+    joinedCount: 2,
+    updatedAt: pastDate(5000),
+  });
+  await assertSucceeds(bobFreeJoin.commit());
+
+  // Admin credits Bob ₹100; Bob joins Paid Custom match (entry = 50, wallet 100 -> 50)
+  await assertSucceeds(
+    adminDb.collection("users").doc(BOB_UID).update({
+      wallet: 100,
+      updatedAt: pastDate(4000),
+    })
+  );
+  const bobPaidJoin = bobDb.batch();
+  bobPaidJoin.set(bobDb.collection("registrations").doc(`paid_custom_4v4_${BOB_UID}`), {
+    matchId: "paid_custom_4v4",
+    userId: BOB_UID,
+    ign: "BobDevice2",
+    gameUid: "444555666",
+    phone: "9876500002",
+    entryPaid: 50,
+    createdAt: pastDate(3000),
+  });
+  bobPaidJoin.update(bobDb.collection("matches").doc("paid_custom_4v4"), {
+    joinedCount: 1,
+    updatedAt: pastDate(3000),
+  });
+  bobPaidJoin.update(bobDb.collection("users").doc(BOB_UID), {
+    wallet: 50,
+    updatedAt: pastDate(3000),
+  });
+  await assertSucceeds(bobPaidJoin.commit());
+});
+
+
 
 
 

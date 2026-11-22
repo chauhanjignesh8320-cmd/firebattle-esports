@@ -58,6 +58,7 @@ import com.example.R
 import com.example.data.firebase.attemptAutoSignIn
 import com.example.data.firebase.onGoogleSignInClicked
 import com.example.ui.components.ErrorBannerCard
+import com.example.ui.components.hasInternetConnection
 import com.example.ui.theme.ArenaObsidian
 import com.example.ui.theme.ArenaSlateBorder
 import com.example.ui.theme.ArenaSlateDark
@@ -222,6 +223,10 @@ fun AuthScreen(
 
                 Button(
                     onClick = {
+                        if (!hasInternetConnection(context)) {
+                            errorMessage = "No internet connection detected. Turn on Wi-Fi or mobile data and try again."
+                            return@Button
+                        }
                         errorMessage = null
                         isLoading = true
                         onGoogleSignInClicked(
