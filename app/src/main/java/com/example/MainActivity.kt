@@ -81,9 +81,12 @@ class MainActivity : ComponentActivity() {
 
     private fun extractReferralCodeFromIntent(intent: Intent?): String {
         val uri = intent?.data ?: return ""
-        if (!uri.scheme.equals("firebattle", ignoreCase = true) ||
-            !uri.host.equals("refer", ignoreCase = true)
-        ) {
+        val isCustomScheme = uri.scheme.equals("firebattle", ignoreCase = true) &&
+            uri.host.equals("refer", ignoreCase = true)
+        val isWebInviteLink = uri.scheme.equals("https", ignoreCase = true) &&
+            uri.host.equals("chauhanjignesh8320-cmd.github.io", ignoreCase = true) &&
+            (uri.path ?: "").startsWith("/firebattle-esports")
+        if (!isCustomScheme && !isWebInviteLink) {
             return ""
         }
         val raw = uri.getQueryParameter("code") ?: uri.getQueryParameter("ref") ?: ""

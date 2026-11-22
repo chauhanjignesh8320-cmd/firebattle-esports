@@ -4,6 +4,7 @@ import android.content.Context
 import com.example.R
 import com.example.data.model.AppSettings
 import com.example.data.model.DEFAULT_APP_DOWNLOAD_URL
+import com.example.data.model.LEGACY_APK_DOWNLOAD_URL
 import com.example.data.model.DepositRequest
 import com.example.data.model.MatchRegistration
 import com.example.data.model.MatchStatus
@@ -106,7 +107,9 @@ class FirebattleRepository(
                 .map { snapshot ->
                     val parsed = snapshot.toObject(AppSettings::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
                         ?: AppSettings()
-                    val resolvedUrl = parsed.appDownloadUrl.ifBlank { DEFAULT_APP_DOWNLOAD_URL }
+                    val resolvedUrl = parsed.appDownloadUrl
+                        .takeIf { it.isNotBlank() && it != LEGACY_APK_DOWNLOAD_URL }
+                        ?: DEFAULT_APP_DOWNLOAD_URL
                     val resolvedFee = if (snapshot.exists() && !snapshot.contains("withdrawalFeePercent")) {
                         0L
                     } else {

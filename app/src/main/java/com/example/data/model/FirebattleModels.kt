@@ -76,8 +76,11 @@ enum class TeamFormat(val label: String, val defaultSlots: Long) {
     }
 }
 
-const val DEFAULT_APP_DOWNLOAD_URL =
+const val LEGACY_APK_DOWNLOAD_URL =
     "https://github.com/chauhanjignesh8320-cmd/firebattle-esports/releases/latest/download/Firebattle.apk"
+
+const val DEFAULT_APP_DOWNLOAD_URL =
+    "https://chauhanjignesh8320-cmd.github.io/firebattle-esports/"
 
 fun buildReferralInviteLink(downloadUrl: String, referralCode: String): String {
     val cleanUrl = downloadUrl.trim().ifBlank { DEFAULT_APP_DOWNLOAD_URL }
