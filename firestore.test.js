@@ -1097,8 +1097,44 @@ test("Admin settles match winner & kills atomically, credits player wallet, and 
   await assertSucceeds(aliceDb.collection("matches").where("status", "==", "COMPLETED").get());
 });
 
+test("Player transaction get() on non-existent own registration & referral succeeds while probing others fails", async () => {
+  const adminDb = adminContext().firestore();
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID, { email: "alice@test.com", email_verified: true }).firestore();
+  const bobDb = testEnv.authenticatedContext(BOB_UID, { email: "bob@test.com", email_verified: true }).firestore();
 
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await db.collection("matches").doc("custom_room_99").set({
+      title: "Custom Room #99",
+      game: "Free Fire MAX",
+      matchMode: "Custom",
+      teamFormat: "4vs4",
+      matchTime: "9:00 PM",
+      mapName: "Bermuda",
+      entry: 0,
+      perKill: 0,
+      prize: 100,
+      slots: 8,
+      joinedCount: 0,
+      roomId: "",
+      roomPass: "",
+      status: "LIVE",
+      createdBy: ADMIN_UID,
+      createdAt: pastDate(10000),
+      updatedAt: pastDate(10000),
+    });
+  });
 
+  // Reading own non-existent registration before join (just like runTransaction) succeeds
+  await assertSucceeds(bobDb.collection("registrations").doc(`custom_room_99_${BOB_UID}`).get());
+  // Reading own non-existent referral before claiming succeeds
+  await assertSucceeds(bobDb.collection("referrals").doc(BOB_UID).get());
+  // Admin reading non-existent registration succeeds
+  await assertSucceeds(adminDb.collection("registrations").doc(`custom_room_99_${BOB_UID}`).get());
 
-
-
+  // Probing someone else's non-existent registration or referral MUST fail
+  await assertFails(bobDb.collection("registrations").doc(`custom_room_99_${ALICE_UID}`).get());
+  await assertFails(bobDb.collection("referrals").doc(ALICE_UID).get());
+  // Alice reading Bob's non-existent registration fails
+  await assertFails(aliceDb.collection("registrations").doc(`custom_room_99_${BOB_UID}`).get());
+});

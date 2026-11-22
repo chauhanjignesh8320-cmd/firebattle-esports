@@ -229,8 +229,11 @@ service cloud.firestore {
     }
 
     match /referrals/{referralId} {
-      allow get: if isSignedIn() && isValidId(referralId) &&
-                    (resource.data.referrerUid == request.auth.uid || resource.data.referredUid == request.auth.uid || isAdmin());
+      allow get: if isSignedIn() && isValidId(referralId) && (
+                    isAdmin() ||
+                    (resource == null && referralId == request.auth.uid) ||
+                    (resource != null && (resource.data.referrerUid == request.auth.uid || resource.data.referredUid == request.auth.uid))
+                  );
       allow list: if isAdmin() || (isSignedIn() && (resource.data.referrerUid == request.auth.uid || resource.data.referredUid == request.auth.uid));
       allow create: if isSignedIn() &&
                        referralId == request.auth.uid &&
@@ -284,7 +287,13 @@ service cloud.firestore {
     }
 
     match /registrations/{regId} {
-      allow get: if isSignedIn() && isValidId(regId) && (resource.data.userId == request.auth.uid || isAdmin());
+      allow get: if isSignedIn() && isValidId(regId) && (
+                    isAdmin() ||
+                    (resource != null && resource.data.userId == request.auth.uid) ||
+                    (resource == null &&
+                     regId.size() > request.auth.uid.size() + 1 &&
+                     regId[regId.size() - request.auth.uid.size() - 1 : regId.size()] == '_' + request.auth.uid)
+                  );
       allow list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
       allow create: if isSignedIn() &&
                        isValidId(regId) &&

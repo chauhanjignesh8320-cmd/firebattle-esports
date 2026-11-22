@@ -481,15 +481,10 @@ class FirebattleRepository(
             }
 
             val referrerRef = db.collection("users").document(referrerUid)
-            val referrerSnap = tx.get(referrerRef)
-            if (!referrerSnap.exists()) throw IllegalStateException("Referrer account no longer exists.")
 
             val bonus = if (settingsSnap.exists()) (settingsSnap.getLong("referralBonus") ?: 10L) else 10L
             if (bonus <= 0L) throw IllegalStateException("Referral rewards are currently paused by the organizer.")
 
-            val referrerWallet = referrerSnap.getLong("wallet") ?: 0L
-            val referrerCount = referrerSnap.getLong("referralCount") ?: 0L
-            val referrerEarnings = referrerSnap.getLong("referralEarnings") ?: 0L
             val selfWallet = selfSnap.getLong("wallet") ?: 0L
 
             tx.set(
@@ -506,9 +501,9 @@ class FirebattleRepository(
             tx.update(
                 referrerRef,
                 mapOf(
-                    "wallet" to (referrerWallet + bonus),
-                    "referralCount" to (referrerCount + 1L),
-                    "referralEarnings" to (referrerEarnings + bonus),
+                    "wallet" to FieldValue.increment(bonus),
+                    "referralCount" to FieldValue.increment(1L),
+                    "referralEarnings" to FieldValue.increment(bonus),
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
             )
