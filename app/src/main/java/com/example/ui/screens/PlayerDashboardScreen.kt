@@ -34,6 +34,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.CardGiftcard
@@ -41,6 +42,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.OpenInNew
@@ -48,8 +50,8 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.CardGiftcard
-import androidx.compose.material.icons.outlined.EmojiEvents
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -144,6 +146,9 @@ fun PlayerDashboardScreen(
     depositsState: UiState<List<DepositRequest>>,
     withdrawalsState: UiState<List<WithdrawalRequest>>,
     referralsState: UiState<List<ReferralRecord>>,
+    selectedTab: PlayerTab = PlayerTab.TOURNAMENTS,
+    onSelectTab: (PlayerTab) -> Unit = {},
+    alertsDialogTrigger: Int = 0,
     initialReferralCode: String = "",
     isBusy: Boolean,
     onJoinMatch: (TournamentMatch) -> Unit,
@@ -155,18 +160,25 @@ fun PlayerDashboardScreen(
     onLogout: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var selectedTab by rememberSaveable { mutableStateOf(PlayerTab.TOURNAMENTS) }
+    val context = LocalContext.current
     var showEditProfileDialog by rememberSaveable { mutableStateOf(false) }
+    var showAlertsDialog by rememberSaveable { mutableStateOf(false) }
     var pendingJoinMatch by remember { mutableStateOf<TournamentMatch?>(null) }
+
+    LaunchedEffect(alertsDialogTrigger) {
+        if (alertsDialogTrigger > 0) {
+            showAlertsDialog = true
+        }
+    }
 
     LaunchedEffect(initialReferralCode) {
         if (initialReferralCode.isNotBlank() && profile.referredByCode.isBlank()) {
-            selectedTab = PlayerTab.REFER
+            onSelectTab(PlayerTab.REFER)
         }
     }
 
     BackHandler(enabled = selectedTab != PlayerTab.TOURNAMENTS) {
-        selectedTab = PlayerTab.TOURNAMENTS
+        onSelectTab(PlayerTab.TOURNAMENTS)
     }
 
     BoxWithConstraints(
@@ -187,7 +199,7 @@ fun PlayerDashboardScreen(
                         val selected = selectedTab == tab
                         NavigationRailItem(
                             selected = selected,
-                            onClick = { selectedTab = tab },
+                            onClick = { onSelectTab(tab) },
                             icon = { PlayerTabIcon(tab, selected) },
                             label = { Text(playerTabLabel(tab)) },
                             colors = NavigationRailItemDefaults.colors(
@@ -220,6 +232,7 @@ fun PlayerDashboardScreen(
                         referralsState = referralsState,
                         initialReferralCode = initialReferralCode,
                         isBusy = isBusy,
+                        onSelectTab = onSelectTab,
                         onEditProfile = { showEditProfileDialog = true },
                         onRequestJoin = { pendingJoinMatch = it },
                         onSubmitDeposit = onSubmitDeposit,
@@ -245,7 +258,7 @@ fun PlayerDashboardScreen(
                             val selected = selectedTab == tab
                             NavigationBarItem(
                                 selected = selected,
-                                onClick = { selectedTab = tab },
+                                onClick = { onSelectTab(tab) },
                                 icon = { PlayerTabIcon(tab, selected) },
                                 label = {
                                     Text(
@@ -256,9 +269,9 @@ fun PlayerDashboardScreen(
                                     )
                                 },
                                 colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = BlazeOrange,
-                                    selectedTextColor = BlazeOrange,
-                                    indicatorColor = BlazeOrangeContainer,
+                                    selectedIconColor = TextPrimary,
+                                    selectedTextColor = TextPrimary,
+                                    indicatorColor = BlazeOrange.copy(alpha = 0.22f),
                                     unselectedIconColor = TextSecondary,
                                     unselectedTextColor = TextSecondary
                                 ),
@@ -281,6 +294,7 @@ fun PlayerDashboardScreen(
                     referralsState = referralsState,
                     initialReferralCode = initialReferralCode,
                     isBusy = isBusy,
+                    onSelectTab = onSelectTab,
                     onEditProfile = { showEditProfileDialog = true },
                     onRequestJoin = { pendingJoinMatch = it },
                     onSubmitDeposit = onSubmitDeposit,
@@ -293,6 +307,69 @@ fun PlayerDashboardScreen(
                 )
             }
         }
+    }
+
+    if (showAlertsDialog) {
+        val liveMatches = (matchesState as? UiState.Success)?.data ?: emptyList()
+        val joinedIds = (joinedMatchIdsState as? UiState.Success)?.data ?: emptySet()
+        val roomReadyMatches = liveMatches.filter { it.id in joinedIds && it.roomId.isNotBlank() }
+        val notifGranted = hasNotificationPermission(context)
+        val notifLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.RequestPermission()
+        ) { granted ->
+            onCopyFeedback(
+                if (granted) "Match Room ID notifications enabled!" else "You can enable notifications anytime in Phone Settings."
+            )
+        }
+        AlertDialog(
+            onDismissRequest = { showAlertsDialog = false },
+            containerColor = ArenaSlateDark,
+            title = {
+                Text("Match & Room Alerts", style = MaterialTheme.typography.titleLarge, color = TextPrimary)
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (roomReadyMatches.isEmpty()) {
+                        Text(
+                            text = "You have ${liveMatches.count { it.id in joinedIds }} joined match(es). Room ID & Password appear here 10 minutes before match time.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary
+                        )
+                    } else {
+                        roomReadyMatches.forEach { m ->
+                            Surface(
+                                color = EmeraldWinContainer,
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(1.dp, EmeraldWin.copy(alpha = 0.5f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Text(m.title, style = MaterialTheme.typography.labelLarge, color = EmeraldWin, fontWeight = FontWeight.Bold)
+                                    Text("Room ID: ${m.roomId} • Pass: ${m.roomPass}", style = MaterialTheme.typography.bodySmall, color = TextPrimary)
+                                }
+                            }
+                        }
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !notifGranted) {
+                        Button(
+                            onClick = { notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) },
+                            colors = ButtonDefaults.buttonColors(containerColor = EmeraldWin, contentColor = ArenaObsidian),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Enable Room Notifications", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { showAlertsDialog = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = BlazeOrange)
+                ) {
+                    Text("OK", fontWeight = FontWeight.Bold)
+                }
+            }
+        )
     }
 
     if (pendingJoinMatch != null) {
@@ -350,7 +427,7 @@ fun PlayerDashboardScreen(
                     Button(
                         onClick = {
                             pendingJoinMatch = null
-                            selectedTab = PlayerTab.WALLET
+                            onSelectTab(PlayerTab.WALLET)
                         },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = EmeraldWin,
@@ -398,6 +475,7 @@ private fun PlayerTabContent(
     referralsState: UiState<List<ReferralRecord>>,
     initialReferralCode: String = "",
     isBusy: Boolean,
+    onSelectTab: (PlayerTab) -> Unit,
     onEditProfile: () -> Unit,
     onRequestJoin: (TournamentMatch) -> Unit,
     onSubmitDeposit: (String, String, () -> Unit) -> Unit,
@@ -418,6 +496,7 @@ private fun PlayerTabContent(
             joinedMatchIdsState = joinedMatchIdsState,
             myRegistrationsListState = myRegistrationsListState,
             isBusy = isBusy,
+            onSelectTab = onSelectTab,
             onEditProfile = onEditProfile,
             onRequestJoin = onRequestJoin,
             onCopyFeedback = onCopyFeedback,
@@ -546,16 +625,20 @@ private fun TournamentsSection(
     joinedMatchIdsState: UiState<Set<String>>,
     myRegistrationsListState: UiState<List<MatchRegistration>>,
     isBusy: Boolean,
+    onSelectTab: (PlayerTab) -> Unit,
     onEditProfile: () -> Unit,
     onRequestJoin: (TournamentMatch) -> Unit,
     onCopyFeedback: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    var showArenaList by rememberSaveable { mutableStateOf(false) }
+    var onlyJoinedFilter by rememberSaveable { mutableStateOf(false) }
     var feedFilter by rememberSaveable { mutableStateOf("Live") }
     var gameFilter by rememberSaveable { mutableStateOf("All") }
     var modeFilter by rememberSaveable { mutableStateOf("All") }
     var formatFilter by rememberSaveable { mutableStateOf("All") }
+    var activeCategoryTitle by rememberSaveable { mutableStateOf("Tournaments") }
     var notificationsGranted by remember { mutableStateOf(hasNotificationPermission(context)) }
     var alertsDismissed by rememberSaveable { mutableStateOf(false) }
     val notificationLauncher = rememberLauncherForActivityResult(
@@ -568,8 +651,9 @@ private fun TournamentsSection(
     }
 
     val joinedIds = (joinedMatchIdsState as? UiState.Success)?.data ?: emptySet()
-    val myRegByMatch = remember(myRegistrationsListState) {
-        (myRegistrationsListState as? UiState.Success)?.data?.associateBy { it.matchId } ?: emptyMap()
+    val myRegistrations = (myRegistrationsListState as? UiState.Success)?.data ?: emptyList()
+    val myRegByMatch = remember(myRegistrations) {
+        myRegistrations.associateBy { it.matchId }
     }
     val settings = (settingsState as? UiState.Success)?.data ?: AppSettings()
     val activeFeedState = if (feedFilter == "Live") matchesState else completedMatchesState
@@ -590,6 +674,36 @@ private fun TournamentsSection(
         }
     }
 
+    BackHandler(enabled = showArenaList) {
+        showArenaList = false
+    }
+
+    if (!showArenaList) {
+        PlayerHomeArenaSection(
+            profile = profile,
+            settings = settings,
+            liveMatches = liveMatchesList,
+            completedMatches = completedMatchesList,
+            joinedIds = joinedIds,
+            myRegistrations = myRegistrations,
+            onOpenArenaFilter = { selection ->
+                feedFilter = selection.feed
+                gameFilter = selection.game
+                modeFilter = selection.mode
+                formatFilter = selection.format
+                onlyJoinedFilter = selection.onlyJoinedOrOngoing
+                activeCategoryTitle = selection.title
+                showArenaList = true
+            },
+            onOpenWallet = { onSelectTab(PlayerTab.WALLET) },
+            onOpenRefer = { onSelectTab(PlayerTab.REFER) },
+            onOpenProfile = { onSelectTab(PlayerTab.PROFILE) },
+            onCopyFeedback = onCopyFeedback,
+            modifier = modifier
+        )
+        return
+    }
+
     val gameMatches = remember(allMatches, gameFilter) {
         allMatches.filter { gameFilter == "All" || it.game == gameFilter }
     }
@@ -600,7 +714,61 @@ private fun TournamentsSection(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            PlayerProfileWalletBar(profile = profile, onEditProfile = onEditProfile)
+            Surface(
+                color = ArenaSlateDark,
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.dp, ArenaSlateBorder),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        IconButton(
+                            onClick = { showArenaList = false },
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .testTag("back_to_arena_home_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back to Home",
+                                tint = BlazeOrange
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = activeCategoryTitle,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = TextPrimary,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "Player: ${profile.ign} • UID: ${profile.gameUid}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                    TextButton(
+                        onClick = onEditProfile,
+                        modifier = Modifier.minimumInteractiveComponentSize()
+                    ) {
+                        Text("Edit ID", color = BlazeOrange, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !notificationsGranted && !alertsDismissed) {
@@ -685,7 +853,10 @@ private fun TournamentsSection(
                     val selected = feedFilter == key
                     FilterChip(
                         selected = selected,
-                        onClick = { feedFilter = key },
+                        onClick = {
+                            feedFilter = key
+                            if (key == "Results") onlyJoinedFilter = false
+                        },
                         label = { Text(label) },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = EmeraldWin,
@@ -727,6 +898,25 @@ private fun TournamentsSection(
                             selected = gameFilter == option,
                             borderColor = ArenaSlateBorder
                         )
+                    )
+                }
+                item {
+                    FilterChip(
+                        selected = onlyJoinedFilter,
+                        onClick = { onlyJoinedFilter = !onlyJoinedFilter },
+                        label = { Text("Joined (${joinedIds.size})") },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = EmeraldWin,
+                            selectedLabelColor = ArenaObsidian,
+                            containerColor = ArenaSlateDark,
+                            labelColor = TextSecondary
+                        ),
+                        border = FilterChipDefaults.filterChipBorder(
+                            enabled = true,
+                            selected = onlyJoinedFilter,
+                            borderColor = ArenaSlateBorder
+                        ),
+                        modifier = Modifier.testTag("player_joined_only_filter")
                     )
                 }
             }
@@ -837,13 +1027,22 @@ private fun TournamentsSection(
                     val format = TeamFormat.fromRaw(match.teamFormat).label
                     (gameFilter == "All" || match.game == gameFilter) &&
                         (modeFilter == "All" || mode == modeFilter) &&
-                        (formatFilter == "All" || format == formatFilter)
+                        (formatFilter == "All" || format == formatFilter) &&
+                        (!onlyJoinedFilter || match.id in joinedIds)
                 }
                 if (filtered.isEmpty()) {
                     item {
                         EmptyArenaState(
-                            title = if (feedFilter == "Live") "No Matches in This Category" else "No Completed Match Results Yet",
-                            subtitle = if (feedFilter == "Live") {
+                            title = if (onlyJoinedFilter) {
+                                "No Joined Matches Here"
+                            } else if (feedFilter == "Live") {
+                                "No Matches in This Category"
+                            } else {
+                                "No Completed Match Results Yet"
+                            },
+                            subtitle = if (onlyJoinedFilter) {
+                                "Join a live tournament from eSport Games to see your Room ID & slot here."
+                            } else if (feedFilter == "Live") {
                                 "Try switching Mode (Lone Wolf / Clash Squad / Custom) or Format (1vs1 / 2vs2 / 4vs4)."
                             } else {
                                 "Verified winners and prize payouts appear here once matches finish."
@@ -2008,7 +2207,7 @@ private fun EditProfileDialog(
 @Composable
 private fun PlayerTabIcon(tab: PlayerTab, selected: Boolean) {
     val icon = when (tab) {
-        PlayerTab.TOURNAMENTS -> if (selected) Icons.Filled.EmojiEvents else Icons.Outlined.EmojiEvents
+        PlayerTab.TOURNAMENTS -> if (selected) Icons.Filled.Home else Icons.Outlined.Home
         PlayerTab.WALLET -> if (selected) Icons.Filled.AccountBalanceWallet else Icons.Outlined.AccountBalanceWallet
         PlayerTab.REFER -> if (selected) Icons.Filled.CardGiftcard else Icons.Outlined.CardGiftcard
         PlayerTab.REQUESTS -> if (selected) Icons.Filled.History else Icons.Outlined.History

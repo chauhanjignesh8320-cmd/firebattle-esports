@@ -37,6 +37,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.data.firebase.FirebattleRepository
 import com.example.data.firebase.signOut
 import com.example.data.model.AppMode
+import com.example.data.model.PlayerTab
 import com.example.data.model.UiState
 import com.example.ui.components.ErrorBannerCard
 import com.example.ui.components.FirebattleTopBar
@@ -158,6 +159,8 @@ private fun AuthenticatedArenaShell(
     val playerBusy by playerViewModel.isBusy.collectAsStateWithLifecycle()
 
     var currentMode by rememberSaveable { mutableStateOf(AppMode.PLAYER) }
+    var selectedPlayerTab by rememberSaveable { mutableStateOf(PlayerTab.TOURNAMENTS) }
+    var alertsDialogTrigger by rememberSaveable { mutableStateOf(0) }
 
     LaunchedEffect(isAdmin) {
         if (!isAdmin && currentMode == AppMode.ADMIN) {
@@ -241,6 +244,10 @@ private fun AuthenticatedArenaShell(
                     )
                 }
             } else {
+                val liveMatchesCount = (matchesState as? UiState.Success)?.data?.size ?: 0
+                val joinedCount = (joinedIdsState as? UiState.Success)?.data?.size ?: 0
+                val topAlertCount = joinedCount.takeIf { it > 0 } ?: liveMatchesCount
+
                 Scaffold(
                     containerColor = ArenaObsidian,
                     snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
@@ -249,7 +256,11 @@ private fun AuthenticatedArenaShell(
                             currentMode = currentMode,
                             isAdmin = isAdmin,
                             onModeSelected = { mode -> currentMode = mode },
-                            onLogoutClick = handleLogout
+                            onLogoutClick = handleLogout,
+                            walletBalance = if (currentMode == AppMode.PLAYER) profile?.wallet else null,
+                            alertCount = topAlertCount,
+                            onWalletClick = { selectedPlayerTab = PlayerTab.WALLET },
+                            onAlertsClick = { alertsDialogTrigger += 1 }
                         )
                     }
                 ) { innerPadding ->
@@ -378,6 +389,9 @@ private fun AuthenticatedArenaShell(
                                 depositsState = depositsState,
                                 withdrawalsState = withdrawalsState,
                                 referralsState = referralsState,
+                                selectedTab = selectedPlayerTab,
+                                onSelectTab = { selectedPlayerTab = it },
+                                alertsDialogTrigger = alertsDialogTrigger,
                                 initialReferralCode = initialReferralCode,
                                 isBusy = playerBusy,
                                 onJoinMatch = { match ->
