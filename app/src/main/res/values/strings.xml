@@ -58,4 +58,11 @@
     <string name="enable_room_alerts">Enable Room Alerts</string>
     <string name="share_match_invite">Share Match</string>
     <string name="go_to_wallet">Add Money (Wallet)</string>
+    <string name="wallet_my_wallet">My Wallet</string>
+    <string name="wallet_deposited">Deposited</string>
+    <string name="wallet_winning">Winning</string>
+    <string name="wallet_bonus">Bonus</string>
+    <string name="wallet_add_money_card">Add Money</string>
+    <string name="wallet_withdraw_card">Withdraw</string>
+    <string name="wallet_transactions_card">Transactions</string>
 </resources>

@@ -252,16 +252,18 @@ private fun AuthenticatedArenaShell(
                     containerColor = ArenaObsidian,
                     snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
                     topBar = {
-                        FirebattleTopBar(
-                            currentMode = currentMode,
-                            isAdmin = isAdmin,
-                            onModeSelected = { mode -> currentMode = mode },
-                            onLogoutClick = handleLogout,
-                            walletBalance = if (currentMode == AppMode.PLAYER) profile?.wallet else null,
-                            alertCount = topAlertCount,
-                            onWalletClick = { selectedPlayerTab = PlayerTab.WALLET },
-                            onAlertsClick = { alertsDialogTrigger += 1 }
-                        )
+                        if (!(currentMode == AppMode.PLAYER && selectedPlayerTab == PlayerTab.WALLET)) {
+                            FirebattleTopBar(
+                                currentMode = currentMode,
+                                isAdmin = isAdmin,
+                                onModeSelected = { mode -> currentMode = mode },
+                                onLogoutClick = handleLogout,
+                                walletBalance = if (currentMode == AppMode.PLAYER) profile?.wallet else null,
+                                alertCount = topAlertCount,
+                                onWalletClick = { selectedPlayerTab = PlayerTab.WALLET },
+                                onAlertsClick = { alertsDialogTrigger += 1 }
+                            )
+                        }
                     }
                 ) { innerPadding ->
                     Column(

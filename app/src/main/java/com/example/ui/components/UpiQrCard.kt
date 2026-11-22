@@ -1,10 +1,13 @@
 package com.example.ui.components
 
+import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color as AndroidColor
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
@@ -41,6 +44,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.R
+import com.example.ui.theme.ArenaInkDark
+import com.example.ui.theme.ArenaInkMuted
+import com.example.ui.theme.ArenaLightBorder
+import com.example.ui.theme.ArenaLightSurface
 import com.example.ui.theme.ArenaObsidian
 import com.example.ui.theme.ArenaSlateBorder
 import com.example.ui.theme.BlazeOrange
@@ -55,6 +62,38 @@ import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 
+data class UpiIntentOutcome(
+    val isSuccess: Boolean,
+    val referenceId: String,
+    val statusLabel: String
+)
+
+fun parseUpiIntentResponse(rawResponse: String?): UpiIntentOutcome {
+    if (rawResponse.isNullOrBlank()) {
+        return UpiIntentOutcome(isSuccess = false, referenceId = "", statusLabel = "CANCELLED")
+    }
+    val params = rawResponse.split("&")
+        .mapNotNull { part ->
+            val idx = part.indexOf('=')
+            if (idx > 0) {
+                part.substring(0, idx).trim().lowercase() to Uri.decode(part.substring(idx + 1).trim())
+            } else {
+                null
+            }
+        }
+        .toMap()
+    val status = (params["status"] ?: "").uppercase()
+    val refId = (params["approvalrefno"] ?: params["txnref"] ?: params["txnid"] ?: "")
+        .filter { it.isLetterOrDigit() }
+        .take(32)
+    val success = status == "SUCCESS" || status == "SUBMITTED"
+    return UpiIntentOutcome(
+        isSuccess = success,
+        referenceId = refId,
+        statusLabel = status.ifBlank { "UNKNOWN" }
+    )
+}
+
 fun buildUpiPaymentUri(upiId: String, upiName: String, amount: Long? = null): String {
     val builder = Uri.Builder()
         .scheme("upi")
@@ -63,7 +102,7 @@ fun buildUpiPaymentUri(upiId: String, upiName: String, amount: Long? = null): St
         .appendQueryParameter("pn", upiName.trim().ifBlank { "Firebattle Esports" })
         .appendQueryParameter("cu", "INR")
     if (amount != null && amount > 0L) {
-        builder.appendQueryParameter("am", amount.toString())
+        builder.appendQueryParameter("am", "$amount.00")
     }
     builder.appendQueryParameter("tn", "Firebattle Wallet Deposit")
     return builder.build().toString()
@@ -96,7 +135,9 @@ fun UpiQrPaymentCard(
     upiName: String,
     amount: Long?,
     onFeedback: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isLightSurface: Boolean = false,
+    onUpiRefCaptured: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val cleanUpi = upiId.trim()
@@ -108,10 +149,39 @@ fun UpiQrPaymentCard(
         if (upiUri.isNotBlank()) generateQrImageBitmap(upiUri) else null
     }
 
+    val upiLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val raw = result.data?.getStringExtra("response")
+        val outcome = parseUpiIntentResponse(raw)
+        when {
+            result.resultCode == Activity.RESULT_OK && outcome.isSuccess -> {
+                if (outcome.referenceId.length >= 6) {
+                    onUpiRefCaptured(outcome.referenceId)
+                    onFeedback("UPI payment completed! Ref ${outcome.referenceId} captured below — tap Submit.")
+                } else {
+                    onFeedback("UPI payment ${outcome.statusLabel}! Enter your 12-digit UTR below & tap Submit.")
+                }
+            }
+            outcome.referenceId.length >= 6 -> {
+                onUpiRefCaptured(outcome.referenceId)
+                onFeedback("Captured Ref ${outcome.referenceId}. Verify status & tap Submit below.")
+            }
+            else -> {
+                onFeedback("Returned from UPI app. If payment succeeded, enter your 12-digit UTR & tap Submit.")
+            }
+        }
+    }
+
+    val cardBg = if (isLightSurface) ArenaLightSurface else ArenaObsidian
+    val cardBorder = if (isLightSurface) ArenaLightBorder else EmeraldWin.copy(alpha = 0.35f)
+    val hintTextColor = if (isLightSurface) ArenaInkMuted else TextSecondary
+    val titleColor = if (isLightSurface) ArenaInkDark else EmeraldWin
+
     Surface(
-        color = ArenaObsidian,
+        color = cardBg,
         shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, EmeraldWin.copy(alpha = 0.35f)),
+        border = BorderStroke(1.dp, cardBorder),
         modifier = modifier.fillMaxWidth()
     ) {
         Column(
@@ -135,14 +205,14 @@ fun UpiQrPaymentCard(
                 Text(
                     text = stringResource(R.string.upi_qr_scan_title),
                     style = MaterialTheme.typography.titleSmall,
-                    color = EmeraldWin,
+                    color = titleColor,
                     fontWeight = FontWeight.Bold
                 )
             }
 
             if (amount != null && amount > 0L) {
                 Surface(
-                    color = BlazeOrangeContainer,
+                    color = if (isLightSurface) BlazeOrange.copy(alpha = 0.12f) else BlazeOrangeContainer,
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Text(
@@ -159,6 +229,7 @@ fun UpiQrPaymentCard(
                 Surface(
                     color = Color.White,
                     shape = RoundedCornerShape(16.dp),
+                    border = if (isLightSurface) BorderStroke(1.dp, ArenaLightBorder) else null,
                     shadowElevation = 2.dp
                 ) {
                     Image(
@@ -167,7 +238,7 @@ fun UpiQrPaymentCard(
                         filterQuality = FilterQuality.None,
                         modifier = Modifier
                             .padding(12.dp)
-                            .size(184.dp)
+                            .size(176.dp)
                             .testTag("upi_qr_code_image")
                     )
                 }
@@ -175,22 +246,26 @@ fun UpiQrPaymentCard(
                 Text(
                     text = stringResource(R.string.upi_qr_scan_hint),
                     style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary,
+                    color = hintTextColor,
                     textAlign = TextAlign.Center
                 )
 
                 Button(
                     onClick = {
+                        if (amount == null || amount <= 0L) {
+                            onFeedback("Select a quick pack or enter Amount (₹) first before opening UPI app.")
+                            return@Button
+                        }
                         val payIntent = Intent(Intent.ACTION_VIEW, Uri.parse(upiUri))
                         try {
-                            context.startActivity(Intent.createChooser(payIntent, "Pay with UPI App"))
+                            upiLauncher.launch(Intent.createChooser(payIntent, "Pay ₹$amount via UPI App"))
                         } catch (_: ActivityNotFoundException) {
-                            onFeedback("No UPI app found. Scan QR or copy UPI ID manually.")
+                            onFeedback("No UPI app found on this phone. Scan QR from another phone or copy UPI ID.")
                         }
                     },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = BlazeOrange,
-                        contentColor = TextPrimary
+                        contentColor = Color.White
                     ),
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
