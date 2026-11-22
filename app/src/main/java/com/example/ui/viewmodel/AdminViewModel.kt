@@ -99,6 +99,7 @@ class AdminViewModel(
         perKillText: String,
         prizeText: String,
         slotsText: String,
+        rules: String = "",
         onSuccess: () -> Unit
     ) {
         val entry = entryText.trim().ifEmpty { "0" }.toLongOrNull()
@@ -122,7 +123,8 @@ class AdminViewModel(
                 entry = entry,
                 perKill = perKill,
                 prize = prize,
-                slots = slots
+                slots = slots,
+                rules = rules
             ).also {
                 if (it.isSuccess) onSuccess()
             }

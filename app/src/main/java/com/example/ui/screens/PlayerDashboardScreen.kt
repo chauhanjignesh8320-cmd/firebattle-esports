@@ -117,6 +117,8 @@ import com.example.ui.components.EmptyArenaState
 import com.example.ui.components.ErrorBannerCard
 import com.example.ui.components.StatTile
 import com.example.ui.components.StatusBadge
+import com.example.ui.components.TournamentRulesDialog
+import com.example.ui.components.TournamentRulesHeroBanner
 import com.example.ui.components.buildMatchShareText
 import com.example.ui.components.formatTimestampShort
 import com.example.ui.components.hasInternetConnection
@@ -1167,6 +1169,7 @@ private fun TournamentMatchCard(
     } else 0f
     val resolvedMode = MatchMode.fromRaw(match.matchMode).label
     val resolvedFormat = TeamFormat.fromRaw(match.teamFormat).label
+    var showRulesDialog by rememberSaveable(match.id) { mutableStateOf(false) }
 
     Surface(
         color = ArenaSlateDark,
@@ -1175,9 +1178,14 @@ private fun TournamentMatchCard(
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            TournamentRulesHeroBanner(
+                match = match,
+                onClick = { showRulesDialog = true }
+            )
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1562,6 +1570,13 @@ private fun TournamentMatchCard(
                 }
             }
         }
+    }
+
+    if (showRulesDialog) {
+        TournamentRulesDialog(
+            match = match,
+            onDismiss = { showRulesDialog = false }
+        )
     }
 }
 

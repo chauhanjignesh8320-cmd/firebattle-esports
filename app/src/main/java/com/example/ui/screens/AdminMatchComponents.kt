@@ -58,6 +58,7 @@ import com.example.data.model.MatchRegistration
 import com.example.data.model.MatchStatus
 import com.example.data.model.TeamFormat
 import com.example.data.model.TournamentMatch
+import com.example.data.model.defaultRulesForGame
 import com.example.ui.components.StatusBadge
 import com.example.ui.theme.ArenaObsidian
 import com.example.ui.theme.ArenaSlateBorder
@@ -96,6 +97,7 @@ fun CreateTournamentCard(
         perKill: String,
         prize: String,
         slots: String,
+        rules: String,
         onSuccess: () -> Unit
     ) -> Unit
 ) {
@@ -110,6 +112,7 @@ fun CreateTournamentCard(
     var perKill by rememberSaveable { mutableStateOf("") }
     var prize by rememberSaveable { mutableStateOf("") }
     var slots by rememberSaveable { mutableStateOf("48") }
+    var rulesText by rememberSaveable { mutableStateOf(defaultRulesForGame(GameTitle.FREE_FIRE_MAX.label)) }
 
     val fieldColors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = BlazeOrange,
@@ -307,7 +310,11 @@ fun CreateTournamentCard(
                         DropdownMenuItem(
                             text = { Text(gameOption.label) },
                             onClick = {
+                                val prevDefault = defaultRulesForGame(selectedGame)
                                 selectedGame = gameOption.label
+                                if (rulesText.isBlank() || rulesText == prevDefault) {
+                                    rulesText = defaultRulesForGame(gameOption.label)
+                                }
                                 gameMenuExpanded = false
                             }
                         )
@@ -429,6 +436,26 @@ fun CreateTournamentCard(
                 }
             }
 
+            OutlinedTextField(
+                value = rulesText,
+                onValueChange = { rulesText = it.take(500) },
+                label = { Text("Tournament Rules (+ Allowed, - Banned)") },
+                supportingText = {
+                    Text(
+                        text = "Prefix line with + for Allowed (Green) or - for Ban/Not Allowed (Red)",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextSecondary
+                    )
+                },
+                minLines = 3,
+                maxLines = 6,
+                colors = fieldColors,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("admin_match_rules_input")
+            )
+
             Button(
                 onClick = {
                     onCreateMatch(
@@ -441,7 +468,8 @@ fun CreateTournamentCard(
                         entry,
                         perKill,
                         prize,
-                        slots
+                        slots,
+                        rulesText
                     ) {
                         title = ""
                         time = ""
@@ -449,6 +477,7 @@ fun CreateTournamentCard(
                         entry = ""
                         perKill = ""
                         prize = ""
+                        rulesText = defaultRulesForGame(selectedGame)
                     }
                 },
                 enabled = !isBusy,

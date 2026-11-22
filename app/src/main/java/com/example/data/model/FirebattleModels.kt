@@ -154,6 +154,7 @@ data class TournamentMatch(
     val slots: Long = 48L,
     val joinedCount: Long = 0L,
     val takenSlots: List<Long> = emptyList(),
+    val rules: String = "",
     val roomId: String = "",
     val roomPass: String = "",
     val status: String = MatchStatus.LIVE.wireValue,
@@ -163,6 +164,38 @@ data class TournamentMatch(
     @ServerTimestamp val createdAt: Timestamp? = null,
     @ServerTimestamp val updatedAt: Timestamp? = null
 )
+
+data class MatchRuleEntry(
+    val allowed: Boolean,
+    val label: String
+)
+
+const val DEFAULT_FF_RULES_TEXT =
+    "+ID LEVEL 40+ ALLOWED\n+HUD POV ALLOWED\n-HORSE BAN\n-M79 LAUNCHER BAN\n-DOUBLE VECTOR BAN\n-IDP SHARE NOT ALLOWED"
+
+const val DEFAULT_BGMI_RULES_TEXT =
+    "+ID LEVEL 30+ ALLOWED\n+MOBILE FAIR PLAY ALLOWED\n-EMULATOR / GFX BAN\n-TEAMING NOT ALLOWED\n-HACK / CONFIG BAN\n-IDP SHARE NOT ALLOWED"
+
+fun defaultRulesForGame(game: String): String =
+    if (game == GameTitle.BGMI.label) DEFAULT_BGMI_RULES_TEXT else DEFAULT_FF_RULES_TEXT
+
+fun parseMatchRuleEntries(rawRules: String, game: String): List<MatchRuleEntry> {
+    val source = rawRules.trim().ifBlank { defaultRulesForGame(game) }
+    return source.lines()
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .take(8)
+        .map { line ->
+            when {
+                line.startsWith("+") -> MatchRuleEntry(true, line.drop(1).trim())
+                line.startsWith("-") || line.startsWith("!") -> MatchRuleEntry(false, line.drop(1).trim())
+                line.contains("ALLOWED", ignoreCase = true) && !line.contains("NOT ALLOWED", ignoreCase = true) ->
+                    MatchRuleEntry(true, line)
+                else -> MatchRuleEntry(false, line)
+            }
+        }
+        .filter { it.label.isNotEmpty() }
+}
 
 @Keep
 @IgnoreExtraProperties

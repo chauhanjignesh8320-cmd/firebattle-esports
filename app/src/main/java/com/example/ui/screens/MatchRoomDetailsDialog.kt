@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Lock
@@ -76,12 +77,14 @@ import com.example.data.model.MatchRegistration
 import com.example.data.model.MatchStatus
 import com.example.data.model.TeamFormat
 import com.example.data.model.TournamentMatch
+import com.example.data.model.parseMatchRuleEntries
 import com.example.ui.theme.ArenaObsidian
 import com.example.ui.theme.ArenaSlateBorder
 import com.example.ui.theme.ArenaSlateDark
 import com.example.ui.theme.ArenaSlateSurface
 import com.example.ui.theme.BlazeOrange
 import com.example.ui.theme.ContestPurple
+import com.example.ui.theme.CrimsonReject
 import com.example.ui.theme.EmeraldWin
 import com.example.ui.theme.EmeraldWinContainer
 import com.example.ui.theme.JetBrainsMonoFamily
@@ -468,6 +471,9 @@ fun MatchRoomDetailsDialog(
     }
 
     if (showMatchInfoDialog) {
+        val ruleEntries = remember(match.id, match.rules, match.game) {
+            parseMatchRuleEntries(match.rules, match.game)
+        }
         AlertDialog(
             onDismissRequest = { showMatchInfoDialog = false },
             containerColor = ArenaSlateDark,
@@ -475,7 +481,10 @@ fun MatchRoomDetailsDialog(
                 Text(match.title, color = TextPrimary, fontWeight = FontWeight.Bold)
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     MatchInfoLine("Game", match.game)
                     MatchInfoLine("Mode & Format", "$resolvedMode ($resolvedFormat)")
                     MatchInfoLine("Match Time", match.matchTime)
@@ -484,6 +493,35 @@ fun MatchRoomDetailsDialog(
                     MatchInfoLine("Per Kill Reward", "₹${match.perKill}")
                     MatchInfoLine("Prize Pool", "₹${match.prize}")
                     MatchInfoLine("Booked Slots", "${match.joinedCount} / ${match.slots}")
+                    HorizontalDivider(
+                        color = ArenaSlateBorder,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
+                    Text(
+                        text = "TOURNAMENT RULES",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = BlazeOrange,
+                        fontWeight = FontWeight.Bold
+                    )
+                    ruleEntries.forEach { rule ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (rule.allowed) Icons.Filled.Check else Icons.Filled.Block,
+                                contentDescription = null,
+                                tint = if (rule.allowed) EmeraldWin else CrimsonReject,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = rule.label.uppercase(),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (rule.allowed) EmeraldWin else TextPrimary,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
                 }
             },
             confirmButton = {

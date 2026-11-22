@@ -1183,6 +1183,7 @@ test("Players can book specific numbered slots with custom IGN while duplicate s
       slots: 48,
       joinedCount: 0,
       takenSlots: [],
+      rules: "+ID LEVEL 40+ ALLOWED\n-M79 LAUNCHER BAN",
       roomId: "",
       roomPass: "",
       status: "LIVE",

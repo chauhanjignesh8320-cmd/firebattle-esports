@@ -783,11 +783,13 @@ class FirebattleRepository(
         entry: Long,
         perKill: Long,
         prize: Long,
-        slots: Long
+        slots: Long,
+        rules: String = ""
     ): Result<Unit> {
         val cleanTitle = title.trim()
         val cleanTime = matchTime.trim()
         val cleanMap = mapName.trim().ifEmpty { "Standard" }
+        val cleanRules = rules.trim().take(500)
         var path = "matches"
         return try {
             val uid = requireUserId()
@@ -818,6 +820,7 @@ class FirebattleRepository(
                     "slots" to slots,
                     "joinedCount" to 0L,
                     "takenSlots" to emptyList<Long>(),
+                    "rules" to cleanRules,
                     "roomId" to "",
                     "roomPass" to "",
                     "status" to MatchStatus.LIVE.wireValue,
