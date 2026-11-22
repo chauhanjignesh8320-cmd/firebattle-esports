@@ -68,4 +68,8 @@
     <string name="choose_match_slot">Choose your match slot</string>
     <string name="slot_ign_label">Free Fire / BGMI In-Game Name</string>
     <string name="slot_ign_hint">Admin checks Slot # + this exact Name in Room</string>
+    <string name="view_more_title">View More</string>
+    <string name="room_notice_time">*ROOM ID AND PASSWORD WILL BE DISPLAYED HERE 4 TO 6 MINS PRIOR TO MATCH</string>
+    <string name="room_notice_slot">*STAY IN YOUR GIVEN ROOM SLOT OR YOU WILL BE KICKED FROM THE ROOM</string>
+    <string name="how_to_join_room">HOW TO JOIN CUSTOM ROOM ?</string>
 </resources>

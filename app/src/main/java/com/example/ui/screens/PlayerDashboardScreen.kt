@@ -69,6 +69,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.NavigationRailItemDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -133,6 +134,7 @@ import com.example.ui.theme.JetBrainsMonoFamily
 import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import com.example.ui.theme.WalletTealDark
 
 @Composable
 fun PlayerDashboardScreen(
@@ -163,6 +165,7 @@ fun PlayerDashboardScreen(
     var showEditProfileDialog by rememberSaveable { mutableStateOf(false) }
     var showAlertsDialog by rememberSaveable { mutableStateOf(false) }
     var pendingJoinMatch by remember { mutableStateOf<TournamentMatch?>(null) }
+    var inspectedMatch by remember { mutableStateOf<TournamentMatch?>(null) }
 
     LaunchedEffect(alertsDialogTrigger) {
         if (alertsDialogTrigger > 0) {
@@ -234,6 +237,7 @@ fun PlayerDashboardScreen(
                         onSelectTab = onSelectTab,
                         onEditProfile = { showEditProfileDialog = true },
                         onRequestJoin = { pendingJoinMatch = it },
+                        onInspectMatch = { inspectedMatch = it },
                         onSubmitDeposit = onSubmitDeposit,
                         onSubmitWithdrawal = onSubmitWithdrawal,
                         onApplyReferralCode = onApplyReferralCode,
@@ -296,6 +300,7 @@ fun PlayerDashboardScreen(
                     onSelectTab = onSelectTab,
                     onEditProfile = { showEditProfileDialog = true },
                     onRequestJoin = { pendingJoinMatch = it },
+                    onInspectMatch = { inspectedMatch = it },
                     onSubmitDeposit = onSubmitDeposit,
                     onSubmitWithdrawal = onSubmitWithdrawal,
                     onApplyReferralCode = onApplyReferralCode,
@@ -407,6 +412,33 @@ fun PlayerDashboardScreen(
         )
     }
 
+    val liveMatchesForInspect = (matchesState as? UiState.Success)?.data.orEmpty()
+    val completedMatchesForInspect = (completedMatchesState as? UiState.Success)?.data.orEmpty()
+    val allMatchesById = remember(liveMatchesForInspect, completedMatchesForInspect) {
+        (liveMatchesForInspect + completedMatchesForInspect).associateBy { it.id }
+    }
+    val activeInspectedMatch = inspectedMatch?.let { selected ->
+        allMatchesById[selected.id] ?: selected
+    }
+    if (activeInspectedMatch != null) {
+        val joinedIds = (joinedMatchIdsState as? UiState.Success)?.data ?: emptySet()
+        val myRegs = (myRegistrationsListState as? UiState.Success)?.data.orEmpty()
+        MatchRoomDetailsDialog(
+            match = activeInspectedMatch,
+            alreadyJoined = activeInspectedMatch.id in joinedIds,
+            myRegistration = myRegs.firstOrNull { it.matchId == activeInspectedMatch.id },
+            allMyRegistrations = myRegs,
+            matchesById = allMatchesById,
+            onDismiss = { inspectedMatch = null },
+            onRequestJoin = {
+                val target = activeInspectedMatch
+                inspectedMatch = null
+                pendingJoinMatch = target
+            },
+            onCopyFeedback = onCopyFeedback
+        )
+    }
+
     if (showEditProfileDialog) {
         EditProfileDialog(
             profile = profile,
@@ -438,6 +470,7 @@ private fun PlayerTabContent(
     onSelectTab: (PlayerTab) -> Unit,
     onEditProfile: () -> Unit,
     onRequestJoin: (TournamentMatch) -> Unit,
+    onInspectMatch: (TournamentMatch) -> Unit,
     onSubmitDeposit: (String, String, () -> Unit) -> Unit,
     onSubmitWithdrawal: (String, String, () -> Unit) -> Unit,
     onApplyReferralCode: (String, () -> Unit) -> Unit,
@@ -459,6 +492,7 @@ private fun PlayerTabContent(
             onSelectTab = onSelectTab,
             onEditProfile = onEditProfile,
             onRequestJoin = onRequestJoin,
+            onInspectMatch = onInspectMatch,
             onCopyFeedback = onCopyFeedback,
             modifier = modifier
         )
@@ -592,6 +626,7 @@ private fun TournamentsSection(
     onSelectTab: (PlayerTab) -> Unit,
     onEditProfile: () -> Unit,
     onRequestJoin: (TournamentMatch) -> Unit,
+    onInspectMatch: (TournamentMatch) -> Unit,
     onCopyFeedback: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -1023,6 +1058,7 @@ private fun TournamentsSection(
                             myRegistration = myRegByMatch[match.id],
                             isBusy = isBusy,
                             onJoinClick = { onRequestJoin(match) },
+                            onViewMoreClick = { onInspectMatch(match) },
                             onCopyFeedback = onCopyFeedback
                         )
                     }
@@ -1119,6 +1155,7 @@ private fun TournamentMatchCard(
     myRegistration: MatchRegistration?,
     isBusy: Boolean,
     onJoinClick: () -> Unit,
+    onViewMoreClick: () -> Unit,
     onCopyFeedback: (String) -> Unit
 ) {
     val context = LocalContext.current
@@ -1409,86 +1446,117 @@ private fun TournamentMatchCard(
                 }
             }
 
-            if (MatchStatus.fromRaw(match.status) == MatchStatus.COMPLETED) {
-                Button(
-                    onClick = {},
-                    enabled = false,
-                    colors = ButtonDefaults.buttonColors(
-                        disabledContainerColor = ArenaSlateSurface,
-                        disabledContentColor = TextSecondary
-                    ),
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onViewMoreClick,
+                    border = BorderStroke(1.dp, WalletTealDark),
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
-                        .fillMaxWidth()
+                        .weight(1f)
                         .heightIn(min = 48.dp)
+                        .testTag("view_more_match_button_${match.id}")
                 ) {
                     Text(
-                        text = if ((myRegistration?.prizeWon ?: 0L) > 0L) {
-                            "Completed • Won ₹${myRegistration?.prizeWon}"
-                        } else {
-                            "Match Completed"
-                        },
-                        fontWeight = FontWeight.Bold
+                        text = if (alreadyJoined) "View Room ID" else "View More",
+                        color = WalletTealDark,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
-            } else {
-                when {
-                    alreadyJoined -> {
-                        Button(
-                            onClick = {},
-                            enabled = false,
-                            colors = ButtonDefaults.buttonColors(
-                                disabledContainerColor = EmeraldWinContainer,
-                                disabledContentColor = EmeraldWin
-                            ),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 48.dp)
-                        ) {
-                            Text(
-                                text = if (myRegistration != null && myRegistration.slotNumber > 0L) {
-                                    "Already Joined • Slot #${myRegistration.slotNumber}"
-                                } else {
-                                    "Already Joined"
-                                },
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
 
-                    isFull -> {
-                        Button(
-                            onClick = {},
-                            enabled = false,
-                            colors = ButtonDefaults.buttonColors(
-                                disabledContainerColor = ArenaSlateSurface,
-                                disabledContentColor = TextMuted
-                            ),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 48.dp)
-                        ) {
-                            Text("Slots Full", fontWeight = FontWeight.Bold)
-                        }
+                if (MatchStatus.fromRaw(match.status) == MatchStatus.COMPLETED) {
+                    Button(
+                        onClick = onViewMoreClick,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = ArenaSlateSurface,
+                            contentColor = TextSecondary
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .weight(1.35f)
+                            .heightIn(min = 48.dp)
+                    ) {
+                        Text(
+                            text = if ((myRegistration?.prizeWon ?: 0L) > 0L) {
+                                "Won ₹${myRegistration?.prizeWon}"
+                            } else {
+                                "Completed"
+                            },
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
+                } else {
+                    when {
+                        alreadyJoined -> {
+                            Button(
+                                onClick = onViewMoreClick,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = EmeraldWinContainer,
+                                    contentColor = EmeraldWin
+                                ),
+                                border = BorderStroke(1.dp, EmeraldWin.copy(alpha = 0.5f)),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .weight(1.35f)
+                                    .heightIn(min = 48.dp)
+                            ) {
+                                Text(
+                                    text = if (myRegistration != null && myRegistration.slotNumber > 0L) {
+                                        "Joined • Slot #${myRegistration.slotNumber}"
+                                    } else {
+                                        "Already Joined"
+                                    },
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
 
-                    else -> {
-                        Button(
-                            onClick = onJoinClick,
-                            enabled = !isBusy,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = BlazeOrange,
-                                contentColor = TextPrimary
-                            ),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 48.dp)
-                                .testTag("join_match_button_${match.id}")
-                        ) {
-                            Text("Join Match (₹${match.entry})", fontWeight = FontWeight.Bold)
+                        isFull -> {
+                            Button(
+                                onClick = {},
+                                enabled = false,
+                                colors = ButtonDefaults.buttonColors(
+                                    disabledContainerColor = ArenaSlateSurface,
+                                    disabledContentColor = TextMuted
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .weight(1.35f)
+                                    .heightIn(min = 48.dp)
+                            ) {
+                                Text("Slots Full", fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        else -> {
+                            Button(
+                                onClick = onJoinClick,
+                                enabled = !isBusy,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = BlazeOrange,
+                                    contentColor = TextPrimary
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .weight(1.35f)
+                                    .heightIn(min = 48.dp)
+                                    .testTag("join_match_button_${match.id}")
+                            ) {
+                                Text(
+                                    text = "Join (₹${match.entry})",
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
                     }
                 }
