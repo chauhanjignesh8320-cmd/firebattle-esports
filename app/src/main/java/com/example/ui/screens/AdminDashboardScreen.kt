@@ -127,11 +127,22 @@ fun AdminDashboardScreen(
     onAdjustUserWallet: (UserProfile, String, () -> Unit) -> Unit,
     onSaveSettings: (AdminSettingsDraft) -> Unit,
     onWithdrawOwnerProfit: (amountText: String, upiId: String, note: String, availableProfit: Long, onSuccess: () -> Unit) -> Unit,
+    onPayMatchReward: (
+        matchId: String,
+        registration: MatchRegistration,
+        killsText: String,
+        amountText: String,
+        markWinner: Boolean,
+        note: String,
+        markMatchCompleted: Boolean,
+        onSuccess: () -> Unit
+    ) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(AdminTab.MATCHES) }
     var matchToDelete by remember { mutableStateOf<TournamentMatch?>(null) }
     var userToAdjustWallet by remember { mutableStateOf<UserProfile?>(null) }
+    var rewardTarget by remember { mutableStateOf<Pair<TournamentMatch, MatchRegistration>?>(null) }
     var showProfitWithdrawDialog by rememberSaveable { mutableStateOf(false) }
 
     val profitSummary = remember(depositsState, withdrawalsState, ownerPayoutsState) {
@@ -209,6 +220,7 @@ fun AdminDashboardScreen(
                         onRequestWalletAdjust = { userToAdjustWallet = it },
                         onSaveSettings = onSaveSettings,
                         onOpenProfitWithdraw = { showProfitWithdrawDialog = true },
+                        onRequestPayPlayer = { match, reg -> rewardTarget = match to reg },
                         modifier = Modifier.widthIn(max = 860.dp)
                     )
                 }
@@ -271,6 +283,7 @@ fun AdminDashboardScreen(
                     onRequestWalletAdjust = { userToAdjustWallet = it },
                     onSaveSettings = onSaveSettings,
                     onOpenProfitWithdraw = { showProfitWithdrawDialog = true },
+                    onRequestPayPlayer = { match, reg -> rewardTarget = match to reg },
                     modifier = Modifier.padding(innerPadding)
                 )
             }
@@ -367,6 +380,29 @@ fun AdminDashboardScreen(
             }
         )
     }
+
+    if (rewardTarget != null) {
+        val (targetMatch, targetReg) = rewardTarget!!
+        PayMatchRewardDialog(
+            match = targetMatch,
+            registration = targetReg,
+            isBusy = isBusy,
+            onDismiss = { rewardTarget = null },
+            onConfirmPay = { killsText, amountText, markWinner, note, markCompleted ->
+                onPayMatchReward(
+                    targetMatch.id,
+                    targetReg,
+                    killsText,
+                    amountText,
+                    markWinner,
+                    note,
+                    markCompleted
+                ) {
+                    rewardTarget = null
+                }
+            }
+        )
+    }
 }
 
 private data class OwnerProfitSummary(
@@ -421,6 +457,7 @@ private fun AdminTabBody(
     onRequestWalletAdjust: (UserProfile) -> Unit,
     onSaveSettings: (AdminSettingsDraft) -> Unit,
     onOpenProfitWithdraw: () -> Unit,
+    onRequestPayPlayer: (TournamentMatch, MatchRegistration) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var adminModeFilter by rememberSaveable { mutableStateOf("All") }
@@ -538,6 +575,7 @@ private fun AdminTabBody(
                                     isBusy = isBusy,
                                     onUpdateRoom = { rid, rpass -> onUpdateRoom(match.id, rid, rpass) },
                                     onToggleStatus = { onToggleMatchStatus(match) },
+                                    onPayPlayerClick = { reg -> onRequestPayPlayer(match, reg) },
                                     onDeleteRequest = { onRequestDeleteMatch(match) }
                                 )
                             }

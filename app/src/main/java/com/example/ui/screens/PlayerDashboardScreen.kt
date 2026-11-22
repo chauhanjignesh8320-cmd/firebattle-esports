@@ -101,6 +101,8 @@ import com.example.R
 import com.example.data.model.AppSettings
 import com.example.data.model.DepositRequest
 import com.example.data.model.MatchMode
+import com.example.data.model.MatchRegistration
+import com.example.data.model.MatchStatus
 import com.example.data.model.PlayerTab
 import com.example.data.model.ReferralRecord
 import com.example.data.model.TeamFormat
@@ -136,7 +138,9 @@ fun PlayerDashboardScreen(
     profile: UserProfile,
     settingsState: UiState<AppSettings>,
     matchesState: UiState<List<TournamentMatch>>,
+    completedMatchesState: UiState<List<TournamentMatch>>,
     joinedMatchIdsState: UiState<Set<String>>,
+    myRegistrationsListState: UiState<List<MatchRegistration>>,
     depositsState: UiState<List<DepositRequest>>,
     withdrawalsState: UiState<List<WithdrawalRequest>>,
     referralsState: UiState<List<ReferralRecord>>,
@@ -208,7 +212,9 @@ fun PlayerDashboardScreen(
                         profile = profile,
                         settingsState = settingsState,
                         matchesState = matchesState,
+                        completedMatchesState = completedMatchesState,
                         joinedMatchIdsState = joinedMatchIdsState,
+                        myRegistrationsListState = myRegistrationsListState,
                         depositsState = depositsState,
                         withdrawalsState = withdrawalsState,
                         referralsState = referralsState,
@@ -267,7 +273,9 @@ fun PlayerDashboardScreen(
                     profile = profile,
                     settingsState = settingsState,
                     matchesState = matchesState,
+                    completedMatchesState = completedMatchesState,
                     joinedMatchIdsState = joinedMatchIdsState,
+                    myRegistrationsListState = myRegistrationsListState,
                     depositsState = depositsState,
                     withdrawalsState = withdrawalsState,
                     referralsState = referralsState,
@@ -382,7 +390,9 @@ private fun PlayerTabContent(
     profile: UserProfile,
     settingsState: UiState<AppSettings>,
     matchesState: UiState<List<TournamentMatch>>,
+    completedMatchesState: UiState<List<TournamentMatch>>,
     joinedMatchIdsState: UiState<Set<String>>,
+    myRegistrationsListState: UiState<List<MatchRegistration>>,
     depositsState: UiState<List<DepositRequest>>,
     withdrawalsState: UiState<List<WithdrawalRequest>>,
     referralsState: UiState<List<ReferralRecord>>,
@@ -404,7 +414,9 @@ private fun PlayerTabContent(
             profile = profile,
             settingsState = settingsState,
             matchesState = matchesState,
+            completedMatchesState = completedMatchesState,
             joinedMatchIdsState = joinedMatchIdsState,
+            myRegistrationsListState = myRegistrationsListState,
             isBusy = isBusy,
             onEditProfile = onEditProfile,
             onRequestJoin = onRequestJoin,
@@ -434,6 +446,7 @@ private fun PlayerTabContent(
         )
 
         PlayerTab.REQUESTS -> RequestsHistorySection(
+            registrationsState = myRegistrationsListState,
             depositsState = depositsState,
             withdrawalsState = withdrawalsState,
             modifier = modifier
@@ -529,7 +542,9 @@ private fun TournamentsSection(
     profile: UserProfile,
     settingsState: UiState<AppSettings>,
     matchesState: UiState<List<TournamentMatch>>,
+    completedMatchesState: UiState<List<TournamentMatch>>,
     joinedMatchIdsState: UiState<Set<String>>,
+    myRegistrationsListState: UiState<List<MatchRegistration>>,
     isBusy: Boolean,
     onEditProfile: () -> Unit,
     onRequestJoin: (TournamentMatch) -> Unit,
@@ -537,6 +552,7 @@ private fun TournamentsSection(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    var feedFilter by rememberSaveable { mutableStateOf("Live") }
     var gameFilter by rememberSaveable { mutableStateOf("All") }
     var modeFilter by rememberSaveable { mutableStateOf("All") }
     var formatFilter by rememberSaveable { mutableStateOf("All") }
@@ -552,12 +568,18 @@ private fun TournamentsSection(
     }
 
     val joinedIds = (joinedMatchIdsState as? UiState.Success)?.data ?: emptySet()
+    val myRegByMatch = remember(myRegistrationsListState) {
+        (myRegistrationsListState as? UiState.Success)?.data?.associateBy { it.matchId } ?: emptyMap()
+    }
     val settings = (settingsState as? UiState.Success)?.data ?: AppSettings()
-    val allMatches = (matchesState as? UiState.Success)?.data ?: emptyList()
+    val activeFeedState = if (feedFilter == "Live") matchesState else completedMatchesState
+    val liveMatchesList = (matchesState as? UiState.Success)?.data ?: emptyList()
+    val completedMatchesList = (completedMatchesState as? UiState.Success)?.data ?: emptyList()
+    val allMatches = if (feedFilter == "Live") liveMatchesList else completedMatchesList
     val previousRoomIds = remember { mutableMapOf<String, String>() }
 
-    LaunchedEffect(allMatches, joinedIds, notificationsGranted) {
-        allMatches.forEach { match ->
+    LaunchedEffect(liveMatchesList, joinedIds, notificationsGranted) {
+        liveMatchesList.forEach { match ->
             val prevRoom = previousRoomIds[match.id]
             if (prevRoom != null && prevRoom.isBlank() && match.roomId.isNotBlank() && match.id in joinedIds) {
                 if (notificationsGranted) {
@@ -648,6 +670,39 @@ private fun TournamentsSection(
                     subtitle = settings.sponsorSubtitle,
                     targetUrl = settings.sponsorUrl
                 )
+            }
+        }
+
+        item {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                listOf(
+                    "Live" to "Live Matches (${liveMatchesList.size})",
+                    "Results" to "Winners & Results (${completedMatchesList.size})"
+                ).forEach { (key, label) ->
+                    val selected = feedFilter == key
+                    FilterChip(
+                        selected = selected,
+                        onClick = { feedFilter = key },
+                        label = { Text(label) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = EmeraldWin,
+                            selectedLabelColor = ArenaObsidian,
+                            containerColor = ArenaSlateDark,
+                            labelColor = TextSecondary
+                        ),
+                        border = FilterChipDefaults.filterChipBorder(
+                            enabled = true,
+                            selected = selected,
+                            borderColor = ArenaSlateBorder
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("player_feed_${key.lowercase()}")
+                    )
+                }
             }
         }
 
@@ -760,7 +815,7 @@ private fun TournamentsSection(
             }
         }
 
-        when (matchesState) {
+        when (activeFeedState) {
             is UiState.Loading -> item {
                 Box(
                     modifier = Modifier
@@ -773,11 +828,11 @@ private fun TournamentsSection(
             }
 
             is UiState.Error -> item {
-                ErrorBannerCard(message = matchesState.message)
+                ErrorBannerCard(message = activeFeedState.message)
             }
 
             is UiState.Success -> {
-                val filtered = matchesState.data.filter { match ->
+                val filtered = activeFeedState.data.filter { match ->
                     val mode = MatchMode.fromRaw(match.matchMode).label
                     val format = TeamFormat.fromRaw(match.teamFormat).label
                     (gameFilter == "All" || match.game == gameFilter) &&
@@ -787,8 +842,12 @@ private fun TournamentsSection(
                 if (filtered.isEmpty()) {
                     item {
                         EmptyArenaState(
-                            title = "No Matches in This Category",
-                            subtitle = "Try switching Mode (Lone Wolf / Clash Squad / Custom) or Format (1vs1 / 2vs2 / 4vs4)."
+                            title = if (feedFilter == "Live") "No Matches in This Category" else "No Completed Match Results Yet",
+                            subtitle = if (feedFilter == "Live") {
+                                "Try switching Mode (Lone Wolf / Clash Squad / Custom) or Format (1vs1 / 2vs2 / 4vs4)."
+                            } else {
+                                "Verified winners and prize payouts appear here once matches finish."
+                            }
                         )
                     }
                 } else {
@@ -798,6 +857,7 @@ private fun TournamentsSection(
                             settings = settings,
                             referralCode = profile.referralCode,
                             alreadyJoined = match.id in joinedIds,
+                            myRegistration = myRegByMatch[match.id],
                             isBusy = isBusy,
                             onJoinClick = { onRequestJoin(match) },
                             onCopyFeedback = onCopyFeedback
@@ -893,6 +953,7 @@ private fun TournamentMatchCard(
     settings: AppSettings,
     referralCode: String,
     alreadyJoined: Boolean,
+    myRegistration: MatchRegistration?,
     isBusy: Boolean,
     onJoinClick: () -> Unit,
     onCopyFeedback: (String) -> Unit
@@ -1115,56 +1176,111 @@ private fun TournamentMatchCard(
                 )
             }
 
-            when {
-                alreadyJoined -> {
-                    Button(
-                        onClick = {},
-                        enabled = false,
-                        colors = ButtonDefaults.buttonColors(
-                            disabledContainerColor = EmeraldWinContainer,
-                            disabledContentColor = EmeraldWin
-                        ),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 48.dp)
+            if (match.winnerSummary.isNotBlank() || (myRegistration?.prizeWon ?: 0L) > 0L) {
+                Surface(
+                    color = EmeraldWinContainer,
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, EmeraldWin.copy(alpha = 0.5f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Text("Already Joined", fontWeight = FontWeight.Bold)
+                        if (match.winnerSummary.isNotBlank()) {
+                            Text(
+                                text = "🏆 Match Winners: ${match.winnerSummary}",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = EmeraldWin,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        if (myRegistration != null && myRegistration.prizeWon > 0L) {
+                            Text(
+                                text = "You Won ₹${myRegistration.prizeWon} • ${myRegistration.payoutNote.ifBlank { "${myRegistration.kills} Kills" }} (Credited to Wallet)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextPrimary,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
                 }
+            }
 
-                isFull -> {
-                    Button(
-                        onClick = {},
-                        enabled = false,
-                        colors = ButtonDefaults.buttonColors(
-                            disabledContainerColor = ArenaSlateSurface,
-                            disabledContentColor = TextMuted
-                        ),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 48.dp)
-                    ) {
-                        Text("Slots Full", fontWeight = FontWeight.Bold)
-                    }
+            if (MatchStatus.fromRaw(match.status) == MatchStatus.COMPLETED) {
+                Button(
+                    onClick = {},
+                    enabled = false,
+                    colors = ButtonDefaults.buttonColors(
+                        disabledContainerColor = ArenaSlateSurface,
+                        disabledContentColor = TextSecondary
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                ) {
+                    Text(
+                        text = if ((myRegistration?.prizeWon ?: 0L) > 0L) {
+                            "Completed • Won ₹${myRegistration?.prizeWon}"
+                        } else {
+                            "Match Completed"
+                        },
+                        fontWeight = FontWeight.Bold
+                    )
                 }
+            } else {
+                when {
+                    alreadyJoined -> {
+                        Button(
+                            onClick = {},
+                            enabled = false,
+                            colors = ButtonDefaults.buttonColors(
+                                disabledContainerColor = EmeraldWinContainer,
+                                disabledContentColor = EmeraldWin
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                        ) {
+                            Text("Already Joined", fontWeight = FontWeight.Bold)
+                        }
+                    }
 
-                else -> {
-                    Button(
-                        onClick = onJoinClick,
-                        enabled = !isBusy,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = BlazeOrange,
-                            contentColor = TextPrimary
-                        ),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 48.dp)
-                            .testTag("join_match_button_${match.id}")
-                    ) {
-                        Text("Join Match (₹${match.entry})", fontWeight = FontWeight.Bold)
+                    isFull -> {
+                        Button(
+                            onClick = {},
+                            enabled = false,
+                            colors = ButtonDefaults.buttonColors(
+                                disabledContainerColor = ArenaSlateSurface,
+                                disabledContentColor = TextMuted
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                        ) {
+                            Text("Slots Full", fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    else -> {
+                        Button(
+                            onClick = onJoinClick,
+                            enabled = !isBusy,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = BlazeOrange,
+                                contentColor = TextPrimary
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .testTag("join_match_button_${match.id}")
+                        ) {
+                            Text("Join Match (₹${match.entry})", fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
@@ -1652,15 +1768,60 @@ private fun WalletSection(
 
 @Composable
 private fun RequestsHistorySection(
+    registrationsState: UiState<List<MatchRegistration>>,
     depositsState: UiState<List<DepositRequest>>,
     withdrawalsState: UiState<List<WithdrawalRequest>>,
     modifier: Modifier = Modifier
 ) {
+    val winningEntries = (registrationsState as? UiState.Success)?.data
+        ?.filter { it.prizeWon > 0L }
+        .orEmpty()
+
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        if (winningEntries.isNotEmpty()) {
+            item {
+                Text(
+                    text = "My Match Winnings",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = EmeraldWin
+                )
+            }
+            items(winningEntries, key = { "win_${it.id}" }) { reg ->
+                Surface(
+                    color = ArenaSlateDark,
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, EmeraldWin.copy(alpha = 0.5f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "🏆 +₹${reg.prizeWon} • ${reg.payoutNote.ifBlank { "Match Prize" }}",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = EmeraldWin,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "IGN: ${reg.ign} • ${reg.kills} Kills • ${formatTimestampShort(reg.paidAt ?: reg.createdAt)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         item {
             Text(
                 text = "My Deposit Requests",

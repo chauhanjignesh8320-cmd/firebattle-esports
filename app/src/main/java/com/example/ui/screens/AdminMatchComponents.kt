@@ -17,12 +17,15 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -30,7 +33,10 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -468,6 +474,7 @@ fun AdminMatchCard(
     isBusy: Boolean,
     onUpdateRoom: (roomId: String, roomPass: String) -> Unit,
     onToggleStatus: () -> Unit,
+    onPayPlayerClick: (MatchRegistration) -> Unit,
     onDeleteRequest: () -> Unit
 ) {
     var roomId by rememberSaveable(match.id, match.roomId) { mutableStateOf(match.roomId) }
@@ -641,33 +648,280 @@ fun AdminMatchCard(
             ) {
                 val isTeamVsMode = resolvedFormat in listOf("1vs1", "2vs2", "4vs4")
                 val teamHalf = (match.slots / 2L).coerceAtLeast(1L).toInt()
-                val rosterText = if (joinedPlayers.isEmpty()) {
-                    "No players joined yet (0/${match.slots} slots filled)"
-                } else {
-                    joinedPlayers.mapIndexed { idx, reg ->
-                        val slotPrefix = if (isTeamVsMode) {
-                            val teamNum = if (idx < teamHalf) 1 else 2
-                            "Team $teamNum • Slot #${idx + 1}"
-                        } else {
-                            "Slot #${idx + 1}"
-                        }
-                        "$slotPrefix: ${reg.ign} (UID: ${reg.gameUid}) • +91 ${reg.phone}"
-                    }.joinToString("\n")
-                }
-                Column(modifier = Modifier.padding(12.dp)) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     Text(
-                        text = "Joined Slots (${joinedPlayers.size}/${match.slots})",
+                        text = "Joined Slots (${joinedPlayers.size}/${match.slots}) • Verify IGN / UID & Pay Winner",
                         style = MaterialTheme.typography.labelMedium,
                         color = BlazeOrange
                     )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = rosterText,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary
-                    )
+                    if (match.winnerSummary.isNotBlank() || match.totalPrizePaid > 0L) {
+                        Surface(
+                            color = EmeraldWinContainer,
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, EmeraldWin.copy(alpha = 0.4f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "Winners Paid: ${match.winnerSummary.ifBlank { "Settled" }} • Total Paid: ₹${match.totalPrizePaid}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = EmeraldWin,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+                    if (joinedPlayers.isEmpty()) {
+                        Text(
+                            text = "No players joined yet (0/${match.slots} slots filled)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary
+                        )
+                    } else {
+                        joinedPlayers.forEachIndexed { idx, reg ->
+                            val slotPrefix = if (isTeamVsMode) {
+                                val teamNum = if (idx < teamHalf) 1 else 2
+                                "Team $teamNum • Slot #${idx + 1}"
+                            } else {
+                                "Slot #${idx + 1}"
+                            }
+                            if (idx > 0) {
+                                HorizontalDivider(color = ArenaSlateBorder.copy(alpha = 0.5f))
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    Text(
+                                        text = "$slotPrefix • ${reg.ign}",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = TextPrimary,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "Game UID: ${reg.gameUid} • +91 ${reg.phone}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = TextSecondary
+                                    )
+                                    if (reg.prizeWon > 0L) {
+                                        Text(
+                                            text = buildString {
+                                                append(if (reg.isWinner) "🏆 Winner • " else "Paid • ")
+                                                append("₹${reg.prizeWon}")
+                                                if (reg.kills > 0L) append(" (${reg.kills} Kills)")
+                                            },
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = EmeraldWin,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                                Button(
+                                    onClick = { onPayPlayerClick(reg) },
+                                    enabled = !isBusy,
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (reg.prizeWon > 0L) ArenaSlateSurface else EmeraldWin,
+                                        contentColor = if (reg.prizeWon > 0L) EmeraldWin else ArenaObsidian
+                                    ),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier
+                                        .heightIn(min = 48.dp)
+                                        .testTag("pay_player_button_${reg.userId}")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.EmojiEvents,
+                                        contentDescription = "Pay Prize",
+                                        modifier = Modifier.width(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = if (reg.prizeWon > 0L) "Add Bonus" else "Pay Prize",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
     }
 }
+
+@Composable
+fun PayMatchRewardDialog(
+    match: TournamentMatch,
+    registration: MatchRegistration,
+    isBusy: Boolean,
+    onDismiss: () -> Unit,
+    onConfirmPay: (
+        killsText: String,
+        amountText: String,
+        markWinner: Boolean,
+        note: String,
+        markMatchCompleted: Boolean
+    ) -> Unit
+) {
+    var markWinner by rememberSaveable(match.id, registration.userId) { mutableStateOf(true) }
+    var killsText by rememberSaveable(match.id, registration.userId) { mutableStateOf("0") }
+    var amountText by rememberSaveable(match.id, registration.userId) {
+        mutableStateOf(match.prize.coerceAtLeast(0L).let { if (it > 0L) it.toString() else "" })
+    }
+    var note by rememberSaveable(match.id, registration.userId) { mutableStateOf("") }
+    var markCompleted by rememberSaveable(match.id, registration.userId) { mutableStateOf(false) }
+
+    fun recalculate(winnerChecked: Boolean, killsRaw: String) {
+        val k = killsRaw.trim().toLongOrNull() ?: 0L
+        val calc = (if (winnerChecked) match.prize else 0L) + (k * match.perKill)
+        amountText = if (calc > 0L) calc.toString() else ""
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = ArenaSlateDark,
+        title = {
+            Text(
+                text = "Pay Winner / Kills Reward",
+                style = MaterialTheme.typography.titleLarge,
+                color = EmeraldWin
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Surface(
+                    color = ArenaObsidian,
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, ArenaSlateBorder),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = "${registration.ign} (UID: ${registration.gameUid})",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = TextPrimary,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "${match.title} • Prize: ₹${match.prize} • Per Kill: ₹${match.perKill}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Winner Prize (+₹${match.prize})",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextPrimary
+                    )
+                    Switch(
+                        checked = markWinner,
+                        onCheckedChange = { checked ->
+                            markWinner = checked
+                            recalculate(checked, killsText)
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = ArenaObsidian,
+                            checkedTrackColor = EmeraldWin
+                        )
+                    )
+                }
+
+                OutlinedTextField(
+                    value = killsText,
+                    onValueChange = { raw ->
+                        val clean = raw.filter { it.isDigit() }.take(3)
+                        killsText = clean
+                        recalculate(markWinner, clean)
+                    },
+                    label = { Text("Verified Kills (x ₹${match.perKill}/kill)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("pay_kills_input")
+                )
+
+                OutlinedTextField(
+                    value = amountText,
+                    onValueChange = { raw ->
+                        amountText = raw.filter { it.isDigit() }.take(7)
+                    },
+                    label = { Text("Credit to Player Wallet (₹)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("pay_amount_input")
+                )
+
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it.take(100) },
+                    label = { Text("Note (e.g. #1 Winner • 5 Kills)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Mark match Completed now",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                    Switch(
+                        checked = markCompleted,
+                        onCheckedChange = { markCompleted = it },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = ArenaObsidian,
+                            checkedTrackColor = BlazeOrange
+                        )
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onConfirmPay(killsText, amountText, markWinner, note, markCompleted)
+                },
+                enabled = !isBusy && (amountText.toLongOrNull() ?: 0L) > 0L,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = EmeraldWin,
+                    contentColor = ArenaObsidian
+                ),
+                modifier = Modifier
+                    .heightIn(min = 48.dp)
+                    .testTag("confirm_pay_reward_button")
+            ) {
+                Text("Pay ₹${amountText.ifBlank { "0" }}", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = TextSecondary)
+            }
+        }
+    )
+}
+

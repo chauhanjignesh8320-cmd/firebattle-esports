@@ -141,6 +141,20 @@ class FirebattleRepository(
         )
     }
 
+    fun observeCompletedMatches(uid: String): Flow<List<TournamentMatch>> = flow {
+        val path = "matches"
+        emitAll(
+            db.collection("matches")
+                .whereEqualTo("status", MatchStatus.COMPLETED.wireValue)
+                .snapshots()
+                .map { snapshot ->
+                    snapshot.toObjects(TournamentMatch::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
+                        .sortedByDescending { it.updatedAt ?: it.createdAt ?: Timestamp(0, 0) }
+                }
+                .catch { error -> handleStreamError(error, OperationType.LIST, path, uid) }
+        )
+    }
+
     fun observeAllMatches(uid: String): Flow<List<TournamentMatch>> = flow {
         val path = "matches"
         emitAll(
@@ -859,6 +873,109 @@ class FirebattleRepository(
             throw e
         } catch (e: Exception) {
             handleFirestoreError(e, OperationType.DELETE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun payMatchRewardAtomic(
+        matchId: String,
+        registration: MatchRegistration,
+        killsCount: Long,
+        prizeAmount: Long,
+        markWinner: Boolean,
+        note: String,
+        markMatchCompleted: Boolean
+    ): Result<Unit> {
+        val cleanNote = note.trim().take(100)
+        val path = "registrations/${registration.id}"
+        return try {
+            requireUserId()
+            require(matchId.isNotBlank() && registration.userId.isNotBlank()) { "Invalid match registration." }
+            require(killsCount in 0L..1000L) { "Kills must be between 0 and 1000." }
+            require(prizeAmount in 1L..10_000_000L) { "Payout amount must be at least ₹1." }
+
+            val regId = registration.id.ifBlank { "${matchId}_${registration.userId}" }
+            val regRef = db.collection("registrations").document(regId)
+            val userRef = db.collection("users").document(registration.userId)
+            val matchRef = db.collection("matches").document(matchId)
+
+            db.runTransaction { tx ->
+                val regSnap = tx.get(regRef)
+                val userSnap = tx.get(userRef)
+                val matchSnap = tx.get(matchRef)
+
+                if (!regSnap.exists()) throw IllegalStateException("Player registration not found.")
+                if (!userSnap.exists()) throw IllegalStateException("Player account not found.")
+                if (!matchSnap.exists()) throw IllegalStateException("Match not found.")
+
+                val prevKills = regSnap.getLong("kills") ?: 0L
+                val prevPrizeWon = regSnap.getLong("prizeWon") ?: 0L
+                val prevIsWinner = regSnap.getBoolean("isWinner") ?: false
+                val currentWallet = userSnap.getLong("wallet") ?: 0L
+                val prevTotalPaid = matchSnap.getLong("totalPrizePaid") ?: 0L
+                val existingSummary = matchSnap.getString("winnerSummary").orEmpty()
+                val existingStatus = matchSnap.getString("status") ?: MatchStatus.LIVE.wireValue
+
+                val newPlayerKills = (prevKills + killsCount).coerceAtMost(1000L)
+                val newPlayerPrizeWon = (prevPrizeWon + prizeAmount).coerceAtMost(10_000_000L)
+                val newIsWinner = prevIsWinner || markWinner
+                val resolvedNote = cleanNote.ifBlank {
+                    buildString {
+                        if (markWinner) append("Winner")
+                        if (killsCount > 0L) {
+                            if (isNotEmpty()) append(" • ")
+                            append("$killsCount Kills")
+                        }
+                        if (isEmpty()) append("Match Reward")
+                    }
+                }
+                val newMatchTotalPaid = (prevTotalPaid + prizeAmount).coerceAtMost(10_000_000L)
+                val playerIgn = regSnap.getString("ign") ?: registration.ign
+                val winnerTag = "$playerIgn (₹$newPlayerPrizeWon)"
+                val updatedSummary = when {
+                    markWinner -> {
+                        if (existingSummary.isBlank()) winnerTag
+                        else if (existingSummary.contains(playerIgn)) winnerTag
+                        else "$winnerTag, $existingSummary"
+                    }
+                    existingSummary.isBlank() -> "$playerIgn (₹$newPlayerPrizeWon)"
+                    else -> existingSummary
+                }.take(160)
+
+                val nextStatus = if (markMatchCompleted) MatchStatus.COMPLETED.wireValue else existingStatus
+
+                tx.update(
+                    regRef,
+                    mapOf(
+                        "kills" to newPlayerKills,
+                        "prizeWon" to newPlayerPrizeWon,
+                        "isWinner" to newIsWinner,
+                        "payoutNote" to resolvedNote,
+                        "paidAt" to FieldValue.serverTimestamp()
+                    )
+                )
+                tx.update(
+                    userRef,
+                    mapOf(
+                        "wallet" to (currentWallet + prizeAmount).coerceAtMost(10_000_000L),
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
+                )
+                tx.update(
+                    matchRef,
+                    mapOf(
+                        "totalPrizePaid" to newMatchTotalPaid,
+                        "winnerSummary" to updatedSummary,
+                        "status" to nextStatus,
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
+                )
+            }.await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.WRITE, path)
             Result.failure(e)
         }
     }

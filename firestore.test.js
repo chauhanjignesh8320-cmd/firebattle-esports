@@ -1018,6 +1018,86 @@ test("Multiple players from separate devices can create profiles and join Free &
   await assertSucceeds(bobPaidJoin.commit());
 });
 
+test("Admin settles match winner & kills atomically, credits player wallet, and blocks player self-award", async () => {
+  const adminDb = adminContext().firestore();
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID, { email: "alice@test.com", email_verified: true }).firestore();
+
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await db.collection("users").doc(ALICE_UID).set({
+      userId: ALICE_UID,
+      email: "alice@test.com",
+      ign: "AliceWinner",
+      gameUid: "777888999",
+      phone: "9876543210",
+      wallet: 10,
+      createdAt: pastDate(10000),
+      updatedAt: pastDate(10000),
+    });
+    await db.collection("matches").doc("lw_final").set({
+      title: "Lone Wolf Final",
+      game: "Free Fire MAX",
+      matchMode: "Lone Wolf",
+      teamFormat: "1vs1",
+      matchTime: "9:00 PM",
+      mapName: "Iron Cage",
+      entry: 50,
+      perKill: 10,
+      prize: 80,
+      slots: 2,
+      joinedCount: 1,
+      roomId: "123456",
+      roomPass: "WIN",
+      status: "LIVE",
+      createdBy: ADMIN_UID,
+      createdAt: pastDate(9000),
+      updatedAt: pastDate(9000),
+    });
+    await db.collection("registrations").doc(`lw_final_${ALICE_UID}`).set({
+      matchId: "lw_final",
+      userId: ALICE_UID,
+      ign: "AliceWinner",
+      gameUid: "777888999",
+      phone: "9876543210",
+      entryPaid: 50,
+      createdAt: pastDate(8000),
+    });
+  });
+
+  // Non-admin player cannot mark themselves winner or edit prizeWon
+  await assertFails(
+    aliceDb.collection("registrations").doc(`lw_final_${ALICE_UID}`).update({
+      isWinner: true,
+      prizeWon: 500,
+    })
+  );
+
+  // Admin atomically marks Alice as Winner (4 kills: ₹80 + ₹40 = ₹120) and marks match COMPLETED
+  const settleBatch = adminDb.batch();
+  settleBatch.update(adminDb.collection("registrations").doc(`lw_final_${ALICE_UID}`), {
+    kills: 4,
+    prizeWon: 120,
+    isWinner: true,
+    payoutNote: "Winner • 4 Kills",
+    paidAt: pastDate(1000),
+  });
+  settleBatch.update(adminDb.collection("users").doc(ALICE_UID), {
+    wallet: 130,
+    updatedAt: pastDate(1000),
+  });
+  settleBatch.update(adminDb.collection("matches").doc("lw_final"), {
+    totalPrizePaid: 120,
+    winnerSummary: "AliceWinner (₹120)",
+    status: "COMPLETED",
+    updatedAt: pastDate(1000),
+  });
+  await assertSucceeds(settleBatch.commit());
+
+  // Signed-in player can query COMPLETED matches to see match results
+  await assertSucceeds(aliceDb.collection("matches").where("status", "==", "COMPLETED").get());
+});
+
+
 
 
 

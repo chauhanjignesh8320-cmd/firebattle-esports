@@ -57,9 +57,22 @@ class PlayerViewModel(
         .toUiState("matches")
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), UiState.Loading)
 
-    val myRegistrationsState: StateFlow<UiState<Set<String>>> = repository.observeMyRegistrations(currentUserId)
-        .map<List<MatchRegistration>, Set<String>> { list -> list.map { it.matchId }.toSet() }
-        .toUiState("registrations")
+    val completedMatchesState: StateFlow<UiState<List<TournamentMatch>>> = repository.observeCompletedMatches(currentUserId)
+        .toUiState("completed matches")
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), UiState.Loading)
+
+    val myRegistrationsListState: StateFlow<UiState<List<MatchRegistration>>> = repository.observeMyRegistrations(currentUserId)
+        .toUiState("registration details")
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), UiState.Loading)
+
+    val myRegistrationsState: StateFlow<UiState<Set<String>>> = myRegistrationsListState
+        .map { state ->
+            when (state) {
+                is UiState.Loading -> UiState.Loading
+                is UiState.Error -> UiState.Error(state.message)
+                is UiState.Success -> UiState.Success(state.data.map { it.matchId }.toSet())
+            }
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), UiState.Loading)
 
     val myDepositsState: StateFlow<UiState<List<DepositRequest>>> = repository.observeMyDeposits(currentUserId)

@@ -149,7 +149,9 @@ private fun AuthenticatedArenaShell(
     val profileState by playerViewModel.profileState.collectAsStateWithLifecycle()
     val settingsState by playerViewModel.settingsState.collectAsStateWithLifecycle()
     val matchesState by playerViewModel.liveMatchesState.collectAsStateWithLifecycle()
+    val completedMatchesState by playerViewModel.completedMatchesState.collectAsStateWithLifecycle()
     val joinedIdsState by playerViewModel.myRegistrationsState.collectAsStateWithLifecycle()
+    val myRegistrationsListState by playerViewModel.myRegistrationsListState.collectAsStateWithLifecycle()
     val depositsState by playerViewModel.myDepositsState.collectAsStateWithLifecycle()
     val withdrawalsState by playerViewModel.myWithdrawalsState.collectAsStateWithLifecycle()
     val referralsState by playerViewModel.myReferralsState.collectAsStateWithLifecycle()
@@ -346,6 +348,18 @@ private fun AuthenticatedArenaShell(
                                         availableProfit = availableProfit,
                                         onSuccess = onSuccess
                                     )
+                                },
+                                onPayMatchReward = { matchId, reg, killsText, amountText, markWinner, note, markCompleted, onSuccess ->
+                                    adminViewModel.payMatchReward(
+                                        matchId = matchId,
+                                        registration = reg,
+                                        killsText = killsText,
+                                        amountText = amountText,
+                                        markWinner = markWinner,
+                                        note = note,
+                                        markMatchCompleted = markCompleted,
+                                        onSuccess = onSuccess
+                                    )
                                 }
                             )
                         } else if (profile != null) {
@@ -358,7 +372,9 @@ private fun AuthenticatedArenaShell(
                                 profile = profile,
                                 settingsState = settingsState,
                                 matchesState = matchesState,
+                                completedMatchesState = completedMatchesState,
                                 joinedMatchIdsState = joinedIdsState,
+                                myRegistrationsListState = myRegistrationsListState,
                                 depositsState = depositsState,
                                 withdrawalsState = withdrawalsState,
                                 referralsState = referralsState,

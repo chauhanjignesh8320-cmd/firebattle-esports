@@ -75,6 +75,8 @@ service cloud.firestore {
              data.roomId is string && data.roomId.size() <= 40 &&
              data.roomPass is string && data.roomPass.size() <= 40 &&
              (data.status == 'LIVE' || data.status == 'COMPLETED') &&
+             (!('winnerSummary' in data) || (data.winnerSummary is string && data.winnerSummary.size() <= 160)) &&
+             (!('totalPrizePaid' in data) || (data.totalPrizePaid is int && data.totalPrizePaid >= 0 && data.totalPrizePaid <= 10000000)) &&
              data.createdBy is string && data.createdBy.size() >= 1 && data.createdBy.size() <= 128;
     }
 
@@ -84,7 +86,12 @@ service cloud.firestore {
              data.ign is string && data.ign.size() >= 2 && data.ign.size() <= 30 &&
              data.gameUid is string && data.gameUid.size() >= 3 && data.gameUid.size() <= 30 &&
              data.phone is string && data.phone.matches('^[0-9]{10}$') &&
-             data.entryPaid is int && data.entryPaid >= 0 && data.entryPaid <= 100000;
+             data.entryPaid is int && data.entryPaid >= 0 && data.entryPaid <= 100000 &&
+             (!('kills' in data) || (data.kills is int && data.kills >= 0 && data.kills <= 1000)) &&
+             (!('prizeWon' in data) || (data.prizeWon is int && data.prizeWon >= 0 && data.prizeWon <= 10000000)) &&
+             (!('isWinner' in data) || data.isWinner is bool) &&
+             (!('payoutNote' in data) || (data.payoutNote is string && data.payoutNote.size() <= 100)) &&
+             (!('paidAt' in data) || data.paidAt is timestamp);
     }
 
     function isValidDeposit(data) {
@@ -248,14 +255,14 @@ service cloud.firestore {
 
     match /matches/{matchId} {
       allow get: if isSignedIn() && isValidId(matchId);
-      allow list: if isAdmin() || (isSignedIn() && resource.data.status == 'LIVE');
+      allow list: if isAdmin() || (isSignedIn() && (resource.data.status == 'LIVE' || resource.data.status == 'COMPLETED'));
       allow create: if isAdmin() &&
                        isValidId(matchId) &&
                        incoming().createdBy == request.auth.uid &&
                        incoming().joinedCount == 0 &&
                        incoming().status == 'LIVE' &&
                        incoming().keys().hasAll(['title', 'game', 'matchTime', 'mapName', 'entry', 'perKill', 'prize', 'slots', 'joinedCount', 'roomId', 'roomPass', 'status', 'createdBy', 'createdAt', 'updatedAt']) &&
-                       incoming().keys().hasOnly(['title', 'game', 'matchMode', 'teamFormat', 'matchTime', 'mapName', 'entry', 'perKill', 'prize', 'slots', 'joinedCount', 'roomId', 'roomPass', 'status', 'createdBy', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['title', 'game', 'matchMode', 'teamFormat', 'matchTime', 'mapName', 'entry', 'perKill', 'prize', 'slots', 'joinedCount', 'roomId', 'roomPass', 'status', 'winnerSummary', 'totalPrizePaid', 'createdBy', 'createdAt', 'updatedAt']) &&
                        isValidMatch(incoming()) &&
                        incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
                        incoming().updatedAt is timestamp && incoming().updatedAt <= request.time;
@@ -266,7 +273,7 @@ service cloud.firestore {
                        incoming().createdAt == existing().createdAt &&
                        incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
                        (
-                         (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'game', 'matchMode', 'teamFormat', 'matchTime', 'mapName', 'entry', 'perKill', 'prize', 'slots', 'roomId', 'roomPass', 'status', 'updatedAt'])) ||
+                         (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'game', 'matchMode', 'teamFormat', 'matchTime', 'mapName', 'entry', 'perKill', 'prize', 'slots', 'roomId', 'roomPass', 'status', 'winnerSummary', 'totalPrizePaid', 'updatedAt'])) ||
                          (existing().status == 'LIVE' &&
                           incoming().diff(existing()).affectedKeys().hasOnly(['joinedCount', 'updatedAt']) &&
                           incoming().joinedCount == existing().joinedCount + 1 &&
@@ -292,7 +299,18 @@ service cloud.firestore {
                        incoming().entryPaid == get(/databases/$(database)/documents/matches/$(incoming().matchId)).data.entry &&
                        getAfter(/databases/$(database)/documents/matches/$(incoming().matchId)).data.joinedCount == get(/databases/$(database)/documents/matches/$(incoming().matchId)).data.joinedCount + 1 &&
                        (incoming().entryPaid == 0 || getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.wallet == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.wallet - incoming().entryPaid);
-      allow update: if false;
+      allow update: if isAdmin() &&
+                       isValidId(regId) &&
+                       isValidRegistration(incoming()) &&
+                       incoming().matchId == existing().matchId &&
+                       incoming().userId == existing().userId &&
+                       incoming().ign == existing().ign &&
+                       incoming().gameUid == existing().gameUid &&
+                       incoming().phone == existing().phone &&
+                       incoming().entryPaid == existing().entryPaid &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['kills', 'prizeWon', 'isWinner', 'payoutNote', 'paidAt']) &&
+                       (!('paidAt' in incoming()) || (incoming().paidAt is timestamp && incoming().paidAt <= request.time));
       allow delete: if isAdmin() && isValidId(regId);
     }
 

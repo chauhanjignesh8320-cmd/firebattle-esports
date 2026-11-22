@@ -152,6 +152,41 @@ class AdminViewModel(
         }
     }
 
+    fun payMatchReward(
+        matchId: String,
+        registration: MatchRegistration,
+        killsText: String,
+        amountText: String,
+        markWinner: Boolean,
+        note: String,
+        markMatchCompleted: Boolean,
+        onSuccess: () -> Unit
+    ) {
+        val kills = killsText.trim().ifEmpty { "0" }.toLongOrNull()
+        val amount = amountText.trim().toLongOrNull()
+        if (kills == null || kills < 0L) {
+            _events.tryEmit("Enter a valid non-negative number of kills.")
+            return
+        }
+        if (amount == null || amount <= 0L) {
+            _events.tryEmit("Enter a valid payout amount of ₹1 or more.")
+            return
+        }
+        runAction("₹$amount credited to ${registration.ign}'s wallet!") {
+            repository.payMatchRewardAtomic(
+                matchId = matchId,
+                registration = registration,
+                killsCount = kills,
+                prizeAmount = amount,
+                markWinner = markWinner,
+                note = note,
+                markMatchCompleted = markMatchCompleted
+            ).also {
+                if (it.isSuccess) onSuccess()
+            }
+        }
+    }
+
     fun approveDeposit(deposit: DepositRequest) {
         runAction("₹${deposit.amount} credited to ${deposit.ign}!") {
             repository.approveDepositAtomic(deposit)

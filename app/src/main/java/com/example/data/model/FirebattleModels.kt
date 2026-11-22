@@ -153,6 +153,8 @@ data class TournamentMatch(
     val roomId: String = "",
     val roomPass: String = "",
     val status: String = MatchStatus.LIVE.wireValue,
+    val winnerSummary: String = "",
+    val totalPrizePaid: Long = 0L,
     val createdBy: String = "",
     @ServerTimestamp val createdAt: Timestamp? = null,
     @ServerTimestamp val updatedAt: Timestamp? = null
@@ -168,6 +170,11 @@ data class MatchRegistration(
     val gameUid: String = "",
     val phone: String = "",
     val entryPaid: Long = 0L,
+    val kills: Long = 0L,
+    val prizeWon: Long = 0L,
+    val isWinner: Boolean = false,
+    val payoutNote: String = "",
+    @ServerTimestamp val paidAt: Timestamp? = null,
     @ServerTimestamp val createdAt: Timestamp? = null
 )
 

@@ -197,6 +197,14 @@
           "enum": ["LIVE", "COMPLETED"],
           "description": "Match lifecycle status."
         },
+        "winnerSummary": {
+          "type": "string",
+          "description": "Display summary of verified match winner(s) and payout."
+        },
+        "totalPrizePaid": {
+          "type": "integer",
+          "description": "Total prize and kill rewards credited to players for this match in INR."
+        },
         "createdBy": {
           "type": "string",
           "description": "Admin UID who created the match."
@@ -242,6 +250,27 @@
         "entryPaid": {
           "type": "integer",
           "description": "Entry fee deducted from wallet."
+        },
+        "kills": {
+          "type": "integer",
+          "description": "Verified in-game kills credited by organizer."
+        },
+        "prizeWon": {
+          "type": "integer",
+          "description": "Total prize and kill reward credited to player wallet in INR."
+        },
+        "isWinner": {
+          "type": "boolean",
+          "description": "Whether this registration was verified as match winner."
+        },
+        "payoutNote": {
+          "type": "string",
+          "description": "Optional payout summary such as rank or kills."
+        },
+        "paidAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of latest prize payout."
         },
         "createdAt": {
           "type": "string",
