@@ -32,6 +32,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.OpenInNew
@@ -67,13 +68,16 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import android.widget.Toast
 import com.example.R
 import com.example.data.model.AdminTab
 import com.example.data.model.AppSettings
@@ -778,6 +782,10 @@ private fun AdminWithdrawalCard(
     onMarkPaid: () -> Unit,
     onRejectRefund: () -> Unit
 ) {
+    val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
+    val netPayout = withdrawal.resolvedNetPayout
+
     Surface(
         color = ArenaSlateDark,
         shape = RoundedCornerShape(16.dp),
@@ -796,7 +804,7 @@ private fun AdminWithdrawalCard(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = if (withdrawal.feeAmount > 0L) {
-                            "Pay Net ₹${withdrawal.resolvedNetPayout} • ${withdrawal.ign}"
+                            "Pay Net ₹$netPayout • ${withdrawal.ign}"
                         } else {
                             "₹${withdrawal.amount} • ${withdrawal.ign}"
                         },
@@ -827,6 +835,74 @@ private fun AdminWithdrawalCard(
             }
 
             if (withdrawal.status == "Pending") {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            val uri = buildUpiPaymentUri(
+                                upiId = withdrawal.upiId,
+                                upiName = withdrawal.ign.ifBlank { "Firebattle Player" },
+                                amount = netPayout,
+                                transactionNote = "Firebattle Prize Payout"
+                            )
+                            try {
+                                context.startActivity(
+                                    Intent.createChooser(
+                                        Intent(Intent.ACTION_VIEW, Uri.parse(uri)),
+                                        "Pay ₹$netPayout to ${withdrawal.ign}"
+                                    )
+                                )
+                            } catch (_: ActivityNotFoundException) {
+                                Toast.makeText(
+                                    context,
+                                    "No UPI app found. Copy UPI ID and pay manually.",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        },
+                        enabled = !isBusy && netPayout > 0L && withdrawal.upiId.contains("@"),
+                        border = BorderStroke(1.dp, EmeraldWin),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp)
+                            .testTag("admin_pay_upi_button_${withdrawal.id}")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.OpenInNew,
+                            contentDescription = null,
+                            tint = EmeraldWin,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Pay ₹$netPayout via UPI",
+                            color = EmeraldWin,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            clipboard.setText(AnnotatedString(withdrawal.upiId))
+                            Toast.makeText(
+                                context,
+                                "Player UPI copied: ${withdrawal.upiId}",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        },
+                        border = BorderStroke(1.dp, ArenaSlateBorder),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .heightIn(min = 48.dp)
+                            .testTag("admin_copy_wd_upi_${withdrawal.id}")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.ContentCopy,
+                            contentDescription = "Copy player UPI ID",
+                            tint = TextPrimary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
                         onClick = onMarkPaid,

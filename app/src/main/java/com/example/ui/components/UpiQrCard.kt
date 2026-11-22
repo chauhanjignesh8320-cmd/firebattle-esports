@@ -94,7 +94,12 @@ fun parseUpiIntentResponse(rawResponse: String?): UpiIntentOutcome {
     )
 }
 
-fun buildUpiPaymentUri(upiId: String, upiName: String, amount: Long? = null): String {
+fun buildUpiPaymentUri(
+    upiId: String,
+    upiName: String,
+    amount: Long? = null,
+    transactionNote: String = "Firebattle Wallet Deposit"
+): String {
     val builder = Uri.Builder()
         .scheme("upi")
         .authority("pay")
@@ -104,7 +109,7 @@ fun buildUpiPaymentUri(upiId: String, upiName: String, amount: Long? = null): St
     if (amount != null && amount > 0L) {
         builder.appendQueryParameter("am", "$amount.00")
     }
-    builder.appendQueryParameter("tn", "Firebattle Wallet Deposit")
+    builder.appendQueryParameter("tn", transactionNote)
     return builder.build().toString()
 }
 
