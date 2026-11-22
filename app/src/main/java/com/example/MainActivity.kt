@@ -399,8 +399,8 @@ private fun AuthenticatedArenaShell(
                                 alertsDialogTrigger = alertsDialogTrigger,
                                 initialReferralCode = initialReferralCode,
                                 isBusy = playerBusy,
-                                onJoinMatch = { match ->
-                                    playerViewModel.joinMatch(match, profile)
+                                onJoinMatch = { match, slotNumber, customIgn ->
+                                    playerViewModel.joinMatch(match, profile, slotNumber, customIgn)
                                 },
                                 onSubmitDeposit = { amt, utr, onSuccess ->
                                     playerViewModel.submitDeposit(profile, amt, utr, onSuccess)

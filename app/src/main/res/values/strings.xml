@@ -65,4 +65,7 @@
     <string name="wallet_add_money_card">Add Money</string>
     <string name="wallet_withdraw_card">Withdraw</string>
     <string name="wallet_transactions_card">Transactions</string>
+    <string name="choose_match_slot">Choose your match slot</string>
+    <string name="slot_ign_label">Free Fire / BGMI In-Game Name</string>
+    <string name="slot_ign_hint">Admin checks Slot # + this exact Name in Room</string>
 </resources>

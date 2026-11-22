@@ -150,7 +150,7 @@ fun PlayerDashboardScreen(
     alertsDialogTrigger: Int = 0,
     initialReferralCode: String = "",
     isBusy: Boolean,
-    onJoinMatch: (TournamentMatch) -> Unit,
+    onJoinMatch: (TournamentMatch, Long, String) -> Unit,
     onSubmitDeposit: (amountText: String, utr: String, onSuccess: () -> Unit) -> Unit,
     onSubmitWithdrawal: (amountText: String, upiId: String, onSuccess: () -> Unit) -> Unit,
     onApplyReferralCode: (code: String, onSuccess: () -> Unit) -> Unit,
@@ -311,6 +311,8 @@ fun PlayerDashboardScreen(
     if (showAlertsDialog) {
         val liveMatches = (matchesState as? UiState.Success)?.data ?: emptyList()
         val joinedIds = (joinedMatchIdsState as? UiState.Success)?.data ?: emptySet()
+        val myRegByMatchAlert = ((myRegistrationsListState as? UiState.Success)?.data ?: emptyList())
+            .associateBy { it.matchId }
         val roomReadyMatches = liveMatches.filter { it.id in joinedIds && it.roomId.isNotBlank() }
         val notifGranted = hasNotificationPermission(context)
         val notifLauncher = rememberLauncherForActivityResult(
@@ -336,6 +338,7 @@ fun PlayerDashboardScreen(
                         )
                     } else {
                         roomReadyMatches.forEach { m ->
+                            val reg = myRegByMatchAlert[m.id]
                             Surface(
                                 color = EmeraldWinContainer,
                                 shape = RoundedCornerShape(10.dp),
@@ -344,6 +347,14 @@ fun PlayerDashboardScreen(
                             ) {
                                 Column(modifier = Modifier.padding(10.dp)) {
                                     Text(m.title, style = MaterialTheme.typography.labelLarge, color = EmeraldWin, fontWeight = FontWeight.Bold)
+                                    if (reg != null && reg.slotNumber > 0L) {
+                                        Text(
+                                            text = "Slot #${reg.slotNumber} • Room IGN: ${reg.ign}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = BlazeOrange,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
                                     Text("Room ID: ${m.roomId} • Pass: ${m.roomPass}", style = MaterialTheme.typography.bodySmall, color = TextPrimary)
                                 }
                             }
@@ -371,76 +382,26 @@ fun PlayerDashboardScreen(
         )
     }
 
-    if (pendingJoinMatch != null) {
-        val match = pendingJoinMatch!!
+    val activeJoinMatch = pendingJoinMatch?.let { selected ->
+        (matchesState as? UiState.Success)?.data?.firstOrNull { it.id == selected.id } ?: selected
+    }
+    if (activeJoinMatch != null) {
         val dialogContext = LocalContext.current
-        val hasEnoughBalance = profile.wallet >= match.entry
-        val shortage = (match.entry - profile.wallet).coerceAtLeast(0L)
-        AlertDialog(
-            onDismissRequest = { pendingJoinMatch = null },
-            containerColor = ArenaSlateDark,
-            title = {
-                Text(
-                    text = if (hasEnoughBalance) "Confirm Match Entry" else "Insufficient Wallet Balance",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = if (hasEnoughBalance) TextPrimary else BlazeOrange
-                )
+        MatchSlotPickerDialog(
+            match = activeJoinMatch,
+            profile = profile,
+            isBusy = isBusy,
+            onDismiss = { pendingJoinMatch = null },
+            onGoToWallet = {
+                pendingJoinMatch = null
+                onSelectTab(PlayerTab.WALLET)
             },
-            text = {
-                if (hasEnoughBalance) {
-                    val entryText = if (match.entry == 0L) {
-                        "Free Entry (₹0) — Tap Join Now to reserve your slot!"
-                    } else {
-                        "Entry fee ₹${match.entry} will be deducted from your wallet (Current: ₹${profile.wallet})."
-                    }
-                    Text(
-                        text = "Join ${match.title} (${match.game})?\n$entryText",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary
-                    )
+            onConfirmSlot = { slotNumber, customIgn ->
+                if (!hasInternetConnection(dialogContext)) {
+                    onCopyFeedback("No internet connection. Turn on mobile data or Wi-Fi.")
                 } else {
-                    Text(
-                        text = "${match.title} entry fee is ₹${match.entry}, and your current wallet balance is ₹${profile.wallet}.\n\nAdd ₹$shortage to your Wallet via UPI QR to join this match.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary
-                    )
-                }
-            },
-            confirmButton = {
-                if (hasEnoughBalance) {
-                    Button(
-                        onClick = {
-                            if (!hasInternetConnection(dialogContext)) {
-                                onCopyFeedback("No internet connection. Turn on mobile data or Wi-Fi.")
-                            } else {
-                                onJoinMatch(match)
-                            }
-                            pendingJoinMatch = null
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = BlazeOrange),
-                        modifier = Modifier.testTag("confirm_join_match_button")
-                    ) {
-                        Text(if (match.entry == 0L) "Join Free" else "Join (₹${match.entry})")
-                    }
-                } else {
-                    Button(
-                        onClick = {
-                            pendingJoinMatch = null
-                            onSelectTab(PlayerTab.WALLET)
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = EmeraldWin,
-                            contentColor = ArenaObsidian
-                        ),
-                        modifier = Modifier.testTag("dialog_go_to_wallet_button")
-                    ) {
-                        Text(stringResource(R.string.go_to_wallet), fontWeight = FontWeight.Bold)
-                    }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { pendingJoinMatch = null }) {
-                    Text("Cancel", color = TextSecondary)
+                    onJoinMatch(activeJoinMatch, slotNumber, customIgn)
+                    pendingJoinMatch = null
                 }
             }
         )
@@ -1302,6 +1263,7 @@ private fun TournamentMatchCard(
                 MatchTeamSlotsStrip(
                     totalSlots = match.slots.toInt(),
                     joinedCount = match.joinedCount.toInt(),
+                    takenSlots = match.takenSlots,
                     teamFormat = resolvedFormat
                 )
             } else {
@@ -1336,18 +1298,56 @@ private fun TournamentMatchCard(
                         modifier = Modifier.padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Filled.Key,
-                                contentDescription = null,
-                                tint = EmeraldWin,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Filled.Key,
+                                    contentDescription = null,
+                                    tint = EmeraldWin,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = stringResource(R.string.room_credentials),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = EmeraldWin
+                                )
+                            }
+                            if (myRegistration != null && myRegistration.slotNumber > 0L) {
+                                Surface(
+                                    color = EmeraldWinContainer,
+                                    shape = RoundedCornerShape(8.dp),
+                                    border = BorderStroke(1.dp, EmeraldWin.copy(alpha = 0.5f))
+                                ) {
+                                    Text(
+                                        text = "Slot #${myRegistration.slotNumber}",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = EmeraldWin,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                }
+                            }
+                        }
+                        if (myRegistration != null && (myRegistration.slotNumber > 0L || myRegistration.ign.isNotBlank())) {
                             Text(
-                                text = stringResource(R.string.room_credentials),
-                                style = MaterialTheme.typography.titleSmall,
-                                color = EmeraldWin
+                                text = buildString {
+                                    if (myRegistration.slotNumber > 0L) {
+                                        append("Booked Slot #${myRegistration.slotNumber}")
+                                    } else {
+                                        append("Booked")
+                                    }
+                                    if (myRegistration.ign.isNotBlank()) {
+                                        append(" • Room IGN: ${myRegistration.ign}")
+                                    }
+                                },
+                                style = MaterialTheme.typography.labelMedium,
+                                color = BlazeOrange,
+                                fontWeight = FontWeight.SemiBold
                             )
                         }
                         CredentialCopyRow(
@@ -1446,7 +1446,14 @@ private fun TournamentMatchCard(
                                 .fillMaxWidth()
                                 .heightIn(min = 48.dp)
                         ) {
-                            Text("Already Joined", fontWeight = FontWeight.Bold)
+                            Text(
+                                text = if (myRegistration != null && myRegistration.slotNumber > 0L) {
+                                    "Already Joined • Slot #${myRegistration.slotNumber}"
+                                } else {
+                                    "Already Joined"
+                                },
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
 
@@ -1494,9 +1501,11 @@ private fun TournamentMatchCard(
 private fun MatchTeamSlotsStrip(
     totalSlots: Int,
     joinedCount: Int,
+    takenSlots: List<Long>,
     teamFormat: String
 ) {
     val half = (totalSlots / 2).coerceAtLeast(1)
+    val takenSet = remember(takenSlots, joinedCount) { takenSlots.toSet() }
     Surface(
         color = ArenaObsidian,
         shape = RoundedCornerShape(12.dp),
@@ -1522,7 +1531,8 @@ private fun MatchTeamSlotsStrip(
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     for (slotIndex in 0 until half) {
-                        val isTaken = slotIndex < joinedCount
+                        val slotNum = (slotIndex + 1).toLong()
+                        val isTaken = if (takenSet.isNotEmpty()) slotNum in takenSet else slotIndex < joinedCount
                         Surface(
                             color = if (isTaken) EmeraldWin else ArenaSlateSurface,
                             shape = RoundedCornerShape(6.dp),
@@ -1553,7 +1563,8 @@ private fun MatchTeamSlotsStrip(
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     for (slotIndex in half until totalSlots) {
-                        val isTaken = slotIndex < joinedCount
+                        val slotNum = (slotIndex + 1).toLong()
+                        val isTaken = if (takenSet.isNotEmpty()) slotNum in takenSet else slotIndex < joinedCount
                         Surface(
                             color = if (isTaken) EmeraldWin else ArenaSlateSurface,
                             shape = RoundedCornerShape(6.dp),

@@ -141,9 +141,15 @@ class PlayerViewModel(
         }
     }
 
-    fun joinMatch(match: TournamentMatch, profile: UserProfile) {
-        runAction("Successfully joined ${match.title}!") {
-            repository.joinMatchAtomic(match.id, profile)
+    fun joinMatch(
+        match: TournamentMatch,
+        profile: UserProfile,
+        slotNumber: Long,
+        customIgn: String
+    ) {
+        val cleanIgn = customIgn.trim().ifBlank { profile.ign }
+        runAction("Joined ${match.title} • Slot #$slotNumber ($cleanIgn)!") {
+            repository.joinMatchAtomic(match.id, profile, slotNumber, cleanIgn)
         }
     }
 

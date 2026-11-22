@@ -1138,3 +1138,173 @@ test("Player transaction get() on non-existent own registration & referral succe
   // Alice reading Bob's non-existent registration fails
   await assertFails(aliceDb.collection("registrations").doc(`custom_room_99_${BOB_UID}`).get());
 });
+
+test("Players can book specific numbered slots with custom IGN while duplicate slots and tampering fail", async () => {
+  const adminDb = adminContext().firestore();
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID, { email: "alice@test.com", email_verified: true }).firestore();
+  const bobDb = testEnv.authenticatedContext(BOB_UID, { email: "bob@test.com", email_verified: true }).firestore();
+
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await db.collection("users").doc(ALICE_UID).set({
+      userId: ALICE_UID,
+      email: "alice@test.com",
+      ign: "AliceProfile",
+      gameUid: "111222333",
+      phone: "9876500001",
+      wallet: 100,
+      createdAt: pastDate(10000),
+      updatedAt: pastDate(10000),
+    });
+    await db.collection("users").doc(BOB_UID).set({
+      userId: BOB_UID,
+      email: "bob@test.com",
+      ign: "BobProfile",
+      gameUid: "444555666",
+      phone: "9876500002",
+      wallet: 100,
+      createdAt: pastDate(10000),
+      updatedAt: pastDate(10000),
+    });
+  });
+
+  // Admin creates a 48-slot match with empty takenSlots
+  await assertSucceeds(
+    adminDb.collection("matches").doc("slot_room_48").set({
+      title: "Bermuda Full Map #1",
+      game: "Free Fire MAX",
+      matchMode: "Custom",
+      teamFormat: "Full Map",
+      matchTime: "10:00 PM",
+      mapName: "Bermuda",
+      entry: 20,
+      perKill: 15,
+      prize: 600,
+      slots: 48,
+      joinedCount: 0,
+      takenSlots: [],
+      roomId: "",
+      roomPass: "",
+      status: "LIVE",
+      createdBy: ADMIN_UID,
+      createdAt: pastDate(9000),
+      updatedAt: pastDate(9000),
+    })
+  );
+
+  // Alice books Slot #23 with her exact Free Fire IGN for room verification
+  const aliceJoin = aliceDb.batch();
+  aliceJoin.set(aliceDb.collection("registrations").doc(`slot_room_48_${ALICE_UID}`), {
+    matchId: "slot_room_48",
+    userId: ALICE_UID,
+    ign: "FF_King_23",
+    gameUid: "111222333",
+    phone: "9876500001",
+    entryPaid: 20,
+    slotNumber: 23,
+    createdAt: pastDate(7000),
+  });
+  aliceJoin.update(aliceDb.collection("matches").doc("slot_room_48"), {
+    joinedCount: 1,
+    takenSlots: [23],
+    updatedAt: pastDate(7000),
+  });
+  aliceJoin.update(aliceDb.collection("users").doc(ALICE_UID), {
+    wallet: 80,
+    updatedAt: pastDate(7000),
+  });
+  await assertSucceeds(aliceJoin.commit());
+
+  // Bob CANNOT book already-taken Slot #23
+  const bobDupSlot = bobDb.batch();
+  bobDupSlot.set(bobDb.collection("registrations").doc(`slot_room_48_${BOB_UID}`), {
+    matchId: "slot_room_48",
+    userId: BOB_UID,
+    ign: "BobRoomIGN",
+    gameUid: "444555666",
+    phone: "9876500002",
+    entryPaid: 20,
+    slotNumber: 23,
+    createdAt: pastDate(6000),
+  });
+  bobDupSlot.update(bobDb.collection("matches").doc("slot_room_48"), {
+    joinedCount: 2,
+    takenSlots: [23, 24],
+    updatedAt: pastDate(6000),
+  });
+  bobDupSlot.update(bobDb.collection("users").doc(BOB_UID), {
+    wallet: 80,
+    updatedAt: pastDate(6000),
+  });
+  await assertFails(bobDupSlot.commit());
+
+  // Bob CANNOT tamper takenSlots by dropping Alice's Slot #23
+  const bobDropSlot = bobDb.batch();
+  bobDropSlot.set(bobDb.collection("registrations").doc(`slot_room_48_${BOB_UID}`), {
+    matchId: "slot_room_48",
+    userId: BOB_UID,
+    ign: "BobRoomIGN",
+    gameUid: "444555666",
+    phone: "9876500002",
+    entryPaid: 20,
+    slotNumber: 24,
+    createdAt: pastDate(5500),
+  });
+  bobDropSlot.update(bobDb.collection("matches").doc("slot_room_48"), {
+    joinedCount: 2,
+    takenSlots: [24],
+    updatedAt: pastDate(5500),
+  });
+  bobDropSlot.update(bobDb.collection("users").doc(BOB_UID), {
+    wallet: 80,
+    updatedAt: pastDate(5500),
+  });
+  await assertFails(bobDropSlot.commit());
+
+  // Bob CANNOT pick out-of-range Slot #49
+  const bobOutOfRange = bobDb.batch();
+  bobOutOfRange.set(bobDb.collection("registrations").doc(`slot_room_48_${BOB_UID}`), {
+    matchId: "slot_room_48",
+    userId: BOB_UID,
+    ign: "BobRoomIGN",
+    gameUid: "444555666",
+    phone: "9876500002",
+    entryPaid: 20,
+    slotNumber: 49,
+    createdAt: pastDate(5200),
+  });
+  bobOutOfRange.update(bobDb.collection("matches").doc("slot_room_48"), {
+    joinedCount: 2,
+    takenSlots: [23, 49],
+    updatedAt: pastDate(5200),
+  });
+  bobOutOfRange.update(bobDb.collection("users").doc(BOB_UID), {
+    wallet: 80,
+    updatedAt: pastDate(5200),
+  });
+  await assertFails(bobOutOfRange.commit());
+
+  // Bob successfully books open Slot #24
+  const bobValidSlot = bobDb.batch();
+  bobValidSlot.set(bobDb.collection("registrations").doc(`slot_room_48_${BOB_UID}`), {
+    matchId: "slot_room_48",
+    userId: BOB_UID,
+    ign: "BobRoomIGN",
+    gameUid: "444555666",
+    phone: "9876500002",
+    entryPaid: 20,
+    slotNumber: 24,
+    createdAt: pastDate(5000),
+  });
+  bobValidSlot.update(bobDb.collection("matches").doc("slot_room_48"), {
+    joinedCount: 2,
+    takenSlots: [23, 24],
+    updatedAt: pastDate(5000),
+  });
+  bobValidSlot.update(bobDb.collection("users").doc(BOB_UID), {
+    wallet: 80,
+    updatedAt: pastDate(5000),
+  });
+  await assertSucceeds(bobValidSlot.commit());
+});
+

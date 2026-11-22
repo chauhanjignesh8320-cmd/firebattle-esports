@@ -536,12 +536,20 @@ class FirebattleRepository(
         return (base.take(6) + suffix).take(8)
     }
 
-    suspend fun joinMatchAtomic(matchId: String, profile: UserProfile): Result<Unit> {
+    suspend fun joinMatchAtomic(
+        matchId: String,
+        profile: UserProfile,
+        slotNumber: Long,
+        customIgn: String = profile.ign
+    ): Result<Unit> {
+        val cleanIgn = customIgn.trim().ifBlank { profile.ign.trim() }
         var path = "matches/$matchId"
         return try {
             val uid = requireUserId()
             check(uid == profile.userId) { "Signed-in user changed; refusing match join." }
             require(matchId.isNotBlank()) { "Match ID is invalid." }
+            require(cleanIgn.length in 2..30) { "In-Game Name must be between 2 and 30 characters." }
+            require(slotNumber in 1L..200L) { "Please pick a valid slot number." }
 
             val matchRef = db.collection("matches").document(matchId)
             val userRef = db.collection("users").document(uid)
@@ -564,6 +572,14 @@ class FirebattleRepository(
                 val joinedCount = matchSnap.getLong("joinedCount") ?: 0L
                 val slots = matchSnap.getLong("slots") ?: 0L
                 if (joinedCount >= slots) throw IllegalStateException("All slots are full.")
+                if (slotNumber > slots) throw IllegalStateException("Slot #$slotNumber does not exist in this $slots-slot match.")
+
+                val currentTakenSlots = (matchSnap.get("takenSlots") as? List<*>)
+                    ?.mapNotNull { (it as? Number)?.toLong() }
+                    .orEmpty()
+                if (slotNumber in currentTakenSlots) {
+                    throw IllegalStateException("Slot #$slotNumber was already taken. Pick another open slot.")
+                }
 
                 val entry = matchSnap.getLong("entry") ?: 0L
                 val currentWallet = userSnap.getLong("wallet") ?: 0L
@@ -571,19 +587,20 @@ class FirebattleRepository(
                     throw IllegalStateException("Insufficient wallet balance (₹$currentWallet). Deposit ₹${entry - currentWallet} more.")
                 }
 
-                val playerIgn = userSnap.getString("ign")?.takeIf { it.isNotBlank() } ?: profile.ign
                 val playerGameUid = userSnap.getString("gameUid")?.takeIf { it.isNotBlank() } ?: profile.gameUid
                 val playerPhone = userSnap.getString("phone")?.takeIf { it.isNotBlank() } ?: profile.phone
+                val updatedTakenSlots = (currentTakenSlots + slotNumber).distinct().sorted()
 
                 tx.set(
                     regRef,
                     mapOf(
                         "matchId" to matchId,
                         "userId" to uid,
-                        "ign" to playerIgn,
+                        "ign" to cleanIgn,
                         "gameUid" to playerGameUid,
                         "phone" to playerPhone,
                         "entryPaid" to entry,
+                        "slotNumber" to slotNumber,
                         "createdAt" to FieldValue.serverTimestamp()
                     )
                 )
@@ -591,6 +608,7 @@ class FirebattleRepository(
                     matchRef,
                     mapOf(
                         "joinedCount" to (joinedCount + 1L),
+                        "takenSlots" to updatedTakenSlots,
                         "updatedAt" to FieldValue.serverTimestamp()
                     )
                 )
@@ -799,6 +817,7 @@ class FirebattleRepository(
                     "prize" to prize,
                     "slots" to slots,
                     "joinedCount" to 0L,
+                    "takenSlots" to emptyList<Long>(),
                     "roomId" to "",
                     "roomPass" to "",
                     "status" to MatchStatus.LIVE.wireValue,

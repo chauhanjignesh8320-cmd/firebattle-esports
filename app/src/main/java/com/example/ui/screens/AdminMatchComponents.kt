@@ -41,6 +41,7 @@ import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -680,12 +681,22 @@ fun AdminMatchCard(
                             color = TextSecondary
                         )
                     } else {
-                        joinedPlayers.forEachIndexed { idx, reg ->
+                        val sortedJoinedPlayers = remember(joinedPlayers) {
+                            joinedPlayers.sortedWith(
+                                compareBy<MatchRegistration>(
+                                    { if (it.slotNumber > 0L) 0 else 1 },
+                                    { it.slotNumber },
+                                    { it.createdAt?.seconds ?: Long.MAX_VALUE }
+                                )
+                            )
+                        }
+                        sortedJoinedPlayers.forEachIndexed { idx, reg ->
+                            val effectiveSlot = if (reg.slotNumber > 0L) reg.slotNumber.toInt() else (idx + 1)
                             val slotPrefix = if (isTeamVsMode) {
-                                val teamNum = if (idx < teamHalf) 1 else 2
-                                "Team $teamNum • Slot #${idx + 1}"
+                                val teamNum = if (effectiveSlot <= teamHalf) 1 else 2
+                                "Team $teamNum • Slot #$effectiveSlot"
                             } else {
-                                "Slot #${idx + 1}"
+                                "Slot #$effectiveSlot"
                             }
                             if (idx > 0) {
                                 HorizontalDivider(color = ArenaSlateBorder.copy(alpha = 0.5f))
@@ -699,12 +710,30 @@ fun AdminMatchCard(
                                     modifier = Modifier.weight(1f),
                                     verticalArrangement = Arrangement.spacedBy(2.dp)
                                 ) {
-                                    Text(
-                                        text = "$slotPrefix • ${reg.ign}",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        color = TextPrimary,
-                                        fontWeight = FontWeight.Bold
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Surface(
+                                            color = BlazeOrangeContainer,
+                                            shape = RoundedCornerShape(6.dp),
+                                            border = BorderStroke(1.dp, BlazeOrange.copy(alpha = 0.5f))
+                                        ) {
+                                            Text(
+                                                text = slotPrefix,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = BlazeOrange,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                        Text(
+                                            text = reg.ign,
+                                            style = MaterialTheme.typography.labelLarge,
+                                            color = TextPrimary,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
                                     Text(
                                         text = "Game UID: ${reg.gameUid} • +91 ${reg.phone}",
                                         style = MaterialTheme.typography.bodySmall,
