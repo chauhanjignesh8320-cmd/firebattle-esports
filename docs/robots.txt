@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://chauhanjignesh8320-cmd.github.io/firebattle-esports/sitemap.xml
