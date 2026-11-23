@@ -10,6 +10,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -29,25 +30,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountBalanceWallet
-import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Key
-import androidx.compose.material.icons.filled.NotificationsActive
-import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.CardGiftcard
 import androidx.compose.material.icons.outlined.History
@@ -57,8 +53,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -87,7 +81,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -98,8 +91,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.data.model.AppSettings
 import com.example.data.model.DepositRequest
@@ -115,21 +110,25 @@ import com.example.data.model.UserProfile
 import com.example.data.model.WithdrawalRequest
 import com.example.ui.components.EmptyArenaState
 import com.example.ui.components.ErrorBannerCard
-import com.example.ui.components.StatTile
 import com.example.ui.components.StatusBadge
 import com.example.ui.components.TournamentRulesDialog
 import com.example.ui.components.TournamentRulesHeroBanner
-import com.example.ui.components.buildMatchShareText
 import com.example.ui.components.formatTimestampShort
 import com.example.ui.components.hasInternetConnection
 import com.example.ui.components.hasNotificationPermission
 import com.example.ui.components.notifyRoomCredentialsReady
+import com.example.ui.theme.ArenaInkDark
+import com.example.ui.theme.ArenaInkMuted
+import com.example.ui.theme.ArenaLightBorder
 import com.example.ui.theme.ArenaObsidian
 import com.example.ui.theme.ArenaSlateBorder
 import com.example.ui.theme.ArenaSlateDark
 import com.example.ui.theme.ArenaSlateSurface
+import com.example.ui.theme.ArenaWhiteCard
 import com.example.ui.theme.BlazeOrange
 import com.example.ui.theme.BlazeOrangeContainer
+import com.example.ui.theme.CoinGold
+import com.example.ui.theme.ContestPurple
 import com.example.ui.theme.EmeraldWin
 import com.example.ui.theme.EmeraldWinContainer
 import com.example.ui.theme.JetBrainsMonoFamily
@@ -634,22 +633,13 @@ private fun TournamentsSection(
 ) {
     val context = LocalContext.current
     var showArenaList by rememberSaveable { mutableStateOf(false) }
-    var onlyJoinedFilter by rememberSaveable { mutableStateOf(false) }
-    var feedFilter by rememberSaveable { mutableStateOf("Live") }
+    var feedFilter by rememberSaveable { mutableStateOf("Upcoming") }
     var gameFilter by rememberSaveable { mutableStateOf("All") }
     var modeFilter by rememberSaveable { mutableStateOf("All") }
     var formatFilter by rememberSaveable { mutableStateOf("All") }
+    var onlyJoinedFilter by rememberSaveable { mutableStateOf(false) }
     var activeCategoryTitle by rememberSaveable { mutableStateOf("Tournaments") }
-    var notificationsGranted by remember { mutableStateOf(hasNotificationPermission(context)) }
-    var alertsDismissed by rememberSaveable { mutableStateOf(false) }
-    val notificationLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        notificationsGranted = granted
-        onCopyFeedback(
-            if (granted) "Match Room ID notifications enabled!" else "You can enable notifications anytime in Phone Settings."
-        )
-    }
+    val notificationsGranted = remember { hasNotificationPermission(context) }
 
     val joinedIds = (joinedMatchIdsState as? UiState.Success)?.data ?: emptySet()
     val myRegistrations = (myRegistrationsListState as? UiState.Success)?.data ?: emptyList()
@@ -657,10 +647,9 @@ private fun TournamentsSection(
         myRegistrations.associateBy { it.matchId }
     }
     val settings = (settingsState as? UiState.Success)?.data ?: AppSettings()
-    val activeFeedState = if (feedFilter == "Live") matchesState else completedMatchesState
+    val activeFeedState = if (feedFilter == "Results") completedMatchesState else matchesState
     val liveMatchesList = (matchesState as? UiState.Success)?.data ?: emptyList()
     val completedMatchesList = (completedMatchesState as? UiState.Success)?.data ?: emptyList()
-    val allMatches = if (feedFilter == "Live") liveMatchesList else completedMatchesList
     val previousRoomIds = remember { mutableMapOf<String, String>() }
 
     LaunchedEffect(liveMatchesList, joinedIds, notificationsGranted) {
@@ -688,7 +677,11 @@ private fun TournamentsSection(
             joinedIds = joinedIds,
             myRegistrations = myRegistrations,
             onOpenArenaFilter = { selection ->
-                feedFilter = selection.feed
+                feedFilter = when {
+                    selection.feed == "Results" -> "Results"
+                    selection.onlyJoinedOrOngoing || selection.feed == "Ongoing" -> "Ongoing"
+                    else -> "Upcoming"
+                }
                 gameFilter = selection.game
                 modeFilter = selection.mode
                 formatFilter = selection.format
@@ -705,443 +698,147 @@ private fun TournamentsSection(
         return
     }
 
-    val gameMatches = remember(allMatches, gameFilter) {
-        allMatches.filter { gameFilter == "All" || it.game == gameFilter }
-    }
-
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(ArenaObsidian)
     ) {
-        item {
-            Surface(
-                color = ArenaSlateDark,
-                shape = RoundedCornerShape(14.dp),
-                border = BorderStroke(1.dp, ArenaSlateBorder),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        IconButton(
-                            onClick = { showArenaList = false },
-                            modifier = Modifier
-                                .minimumInteractiveComponentSize()
-                                .testTag("back_to_arena_home_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back to Home",
-                                tint = BlazeOrange
-                            )
-                        }
-                        Column {
-                            Text(
-                                text = activeCategoryTitle,
-                                style = MaterialTheme.typography.titleMedium,
-                                color = TextPrimary,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = "Player: ${profile.ign} • UID: ${profile.gameUid}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = TextSecondary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-                    TextButton(
-                        onClick = onEditProfile,
-                        modifier = Modifier.minimumInteractiveComponentSize()
-                    ) {
-                        Text("Edit ID", color = BlazeOrange, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !notificationsGranted && !alertsDismissed) {
-            item {
-                Surface(
-                    color = ArenaSlateDark,
-                    shape = RoundedCornerShape(14.dp),
-                    border = BorderStroke(1.dp, EmeraldWin.copy(alpha = 0.45f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.NotificationsActive,
-                            contentDescription = stringResource(R.string.enable_room_alerts),
-                            tint = EmeraldWin,
-                            modifier = Modifier.size(22.dp)
-                        )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Get Room ID & Pass Alerts",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = TextPrimary
-                            )
-                            Text(
-                                text = "Allow notifications so you never miss Custom match Room ID.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextSecondary
-                            )
-                        }
-                        Button(
-                            onClick = {
-                                notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                            },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = EmeraldWin,
-                                contentColor = ArenaObsidian
-                            ),
-                            shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                            modifier = Modifier
-                                .heightIn(min = 48.dp)
-                                .testTag("enable_notifications_button")
-                        ) {
-                            Text("Allow", fontWeight = FontWeight.Bold)
-                        }
-                        TextButton(
-                            onClick = { alertsDismissed = true },
-                            modifier = Modifier.heightIn(min = 48.dp)
-                        ) {
-                            Text("Later", color = TextSecondary)
-                        }
-                    }
-                }
-            }
-        }
-
-        if (settings.sponsorTitle.isNotBlank()) {
-            item {
-                SponsoredPartnerCard(
-                    title = settings.sponsorTitle,
-                    subtitle = settings.sponsorSubtitle,
-                    targetUrl = settings.sponsorUrl
-                )
-            }
-        }
-
-        item {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                listOf(
-                    "Live" to "Live Matches (${liveMatchesList.size})",
-                    "Results" to "Winners & Results (${completedMatchesList.size})"
-                ).forEach { (key, label) ->
-                    val selected = feedFilter == key
-                    FilterChip(
-                        selected = selected,
-                        onClick = {
-                            feedFilter = key
-                            if (key == "Results") onlyJoinedFilter = false
-                        },
-                        label = { Text(label) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = EmeraldWin,
-                            selectedLabelColor = ArenaObsidian,
-                            containerColor = ArenaSlateDark,
-                            labelColor = TextSecondary
-                        ),
-                        border = FilterChipDefaults.filterChipBorder(
-                            enabled = true,
-                            selected = selected,
-                            borderColor = ArenaSlateBorder
-                        ),
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("player_feed_${key.lowercase()}")
-                    )
-                }
-            }
-        }
-
-        item {
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                items(listOf("All", "Free Fire MAX", "BGMI")) { option ->
-                    FilterChip(
-                        selected = gameFilter == option,
-                        onClick = { gameFilter = option },
-                        label = { Text(option) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = BlazeOrange,
-                            selectedLabelColor = TextPrimary,
-                            containerColor = ArenaSlateDark,
-                            labelColor = TextSecondary
-                        ),
-                        border = FilterChipDefaults.filterChipBorder(
-                            enabled = true,
-                            selected = gameFilter == option,
-                            borderColor = ArenaSlateBorder
-                        )
-                    )
-                }
-                item {
-                    FilterChip(
-                        selected = onlyJoinedFilter,
-                        onClick = { onlyJoinedFilter = !onlyJoinedFilter },
-                        label = { Text("Joined (${joinedIds.size})") },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = EmeraldWin,
-                            selectedLabelColor = ArenaObsidian,
-                            containerColor = ArenaSlateDark,
-                            labelColor = TextSecondary
-                        ),
-                        border = FilterChipDefaults.filterChipBorder(
-                            enabled = true,
-                            selected = onlyJoinedFilter,
-                            borderColor = ArenaSlateBorder
-                        ),
-                        modifier = Modifier.testTag("player_joined_only_filter")
-                    )
-                }
-            }
-        }
-
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    text = "Match Mode",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TextSecondary
-                )
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    items(listOf("All", "Lone Wolf", "Clash Squad", "Custom")) { modeOpt ->
-                        val count = if (modeOpt == "All") {
-                            gameMatches.size
-                        } else {
-                            gameMatches.count { MatchMode.fromRaw(it.matchMode).label == modeOpt }
-                        }
-                        val label = if (allMatches.isNotEmpty()) "$modeOpt ($count)" else modeOpt
-                        FilterChip(
-                            selected = modeFilter == modeOpt,
-                            onClick = { modeFilter = modeOpt },
-                            label = { Text(label) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = EmeraldWin,
-                                selectedLabelColor = ArenaObsidian,
-                                containerColor = ArenaSlateDark,
-                                labelColor = TextSecondary
-                            ),
-                            border = FilterChipDefaults.filterChipBorder(
-                                enabled = true,
-                                selected = modeFilter == modeOpt,
-                                borderColor = ArenaSlateBorder
-                            ),
-                            modifier = Modifier.testTag("player_mode_filter_${modeOpt.lowercase().replace(" ", "_")}")
-                        )
-                    }
-                }
-            }
-        }
-
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    text = "Format & Slots",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TextSecondary
-                )
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    items(listOf("All", "1vs1", "2vs2", "4vs4", "Full Map")) { fmtOpt ->
-                        val modeScoped = gameMatches.filter {
-                            modeFilter == "All" || MatchMode.fromRaw(it.matchMode).label == modeFilter
-                        }
-                        val count = if (fmtOpt == "All") {
-                            modeScoped.size
-                        } else {
-                            modeScoped.count { TeamFormat.fromRaw(it.teamFormat).label == fmtOpt }
-                        }
-                        val label = if (allMatches.isNotEmpty()) "$fmtOpt ($count)" else fmtOpt
-                        FilterChip(
-                            selected = formatFilter == fmtOpt,
-                            onClick = { formatFilter = fmtOpt },
-                            label = { Text(label) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = BlazeOrange,
-                                selectedLabelColor = TextPrimary,
-                                containerColor = ArenaSlateDark,
-                                labelColor = TextSecondary
-                            ),
-                            border = FilterChipDefaults.filterChipBorder(
-                                enabled = true,
-                                selected = formatFilter == fmtOpt,
-                                borderColor = ArenaSlateBorder
-                            ),
-                            modifier = Modifier.testTag("player_format_filter_${fmtOpt.lowercase().replace(" ", "_")}")
-                        )
-                    }
-                }
-            }
-        }
-
-        when (activeFeedState) {
-            is UiState.Loading -> item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(32.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = BlazeOrange)
-                }
-            }
-
-            is UiState.Error -> item {
-                ErrorBannerCard(message = activeFeedState.message)
-            }
-
-            is UiState.Success -> {
-                val filtered = activeFeedState.data.filter { match ->
-                    val mode = MatchMode.fromRaw(match.matchMode).label
-                    val format = TeamFormat.fromRaw(match.teamFormat).label
-                    (gameFilter == "All" || match.game == gameFilter) &&
-                        (modeFilter == "All" || mode == modeFilter) &&
-                        (formatFilter == "All" || format == formatFilter) &&
-                        (!onlyJoinedFilter || match.id in joinedIds)
-                }
-                if (filtered.isEmpty()) {
-                    item {
-                        EmptyArenaState(
-                            title = if (onlyJoinedFilter) {
-                                "No Joined Matches Here"
-                            } else if (feedFilter == "Live") {
-                                "No Matches in This Category"
-                            } else {
-                                "No Completed Match Results Yet"
-                            },
-                            subtitle = if (onlyJoinedFilter) {
-                                "Join a live tournament from eSport Games to see your Room ID & slot here."
-                            } else if (feedFilter == "Live") {
-                                "Try switching Mode (Lone Wolf / Clash Squad / Custom) or Format (1vs1 / 2vs2 / 4vs4)."
-                            } else {
-                                "Verified winners and prize payouts appear here once matches finish."
-                            }
-                        )
-                    }
-                } else {
-                    items(filtered, key = { it.id }) { match ->
-                        TournamentMatchCard(
-                            match = match,
-                            settings = settings,
-                            referralCode = profile.referralCode,
-                            alreadyJoined = match.id in joinedIds,
-                            myRegistration = myRegByMatch[match.id],
-                            isBusy = isBusy,
-                            onJoinClick = { onRequestJoin(match) },
-                            onViewMoreClick = { onInspectMatch(match) },
-                            onCopyFeedback = onCopyFeedback
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SponsoredPartnerCard(
-    title: String,
-    subtitle: String,
-    targetUrl: String
-) {
-    val context = LocalContext.current
-    val hasValidUrl = targetUrl.startsWith("https://") || targetUrl.startsWith("http://")
-    Surface(
-        color = ArenaSlateDark,
-        shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, BlazeOrange.copy(alpha = 0.5f)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag("sponsored_partner_card")
-    ) {
+        // Simple Top Header: Back Arrow + Title only
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                .background(ArenaObsidian)
+                .padding(horizontal = 6.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = Icons.Filled.Campaign,
-                contentDescription = stringResource(R.string.sponsor_badge),
-                tint = BlazeOrange,
-                modifier = Modifier.size(28.dp)
+            IconButton(
+                onClick = { showArenaList = false },
+                modifier = Modifier
+                    .minimumInteractiveComponentSize()
+                    .testTag("back_to_arena_home_button")
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back to Home",
+                    tint = TextPrimary
+                )
+            }
+            Text(
+                text = activeCategoryTitle.uppercase(),
+                style = MaterialTheme.typography.titleMedium,
+                color = TextPrimary,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = 48.dp),
+                textAlign = TextAlign.Center
             )
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(R.string.sponsor_badge),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = BlazeOrange,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = TextPrimary,
-                    fontWeight = FontWeight.Bold
-                )
-                if (subtitle.isNotBlank()) {
+        }
+
+        // Purple 3-Tab Strip: ONGOING | UPCOMING | RESULTS
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(ContestPurple)
+        ) {
+            listOf("Ongoing", "Upcoming", "Results").forEach { tabKey ->
+                val selected = feedFilter == tabKey
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable {
+                            feedFilter = tabKey
+                            if (tabKey != "Ongoing") onlyJoinedFilter = false
+                        }
+                        .testTag("player_feed_${tabKey.lowercase()}"),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
                     Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary
+                        text = tabKey.uppercase(),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (selected) Color.White else Color.White.copy(alpha = 0.72f),
+                        fontWeight = FontWeight.ExtraBold,
+                        modifier = Modifier.padding(vertical = 13.dp)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .background(if (selected) Color.White else Color.Transparent)
                     )
                 }
             }
-            if (hasValidUrl) {
-                Button(
-                    onClick = {
-                        runCatching {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)))
+        }
+
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            when (activeFeedState) {
+                is UiState.Loading -> item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = ContestPurple)
+                    }
+                }
+
+                is UiState.Error -> item {
+                    ErrorBannerCard(message = activeFeedState.message)
+                }
+
+                is UiState.Success -> {
+                    val categoryFiltered = activeFeedState.data.filter { match ->
+                        val mode = MatchMode.fromRaw(match.matchMode).label
+                        val format = TeamFormat.fromRaw(match.teamFormat).label
+                        (gameFilter == "All" || match.game == gameFilter) &&
+                            (modeFilter == "All" || mode == modeFilter) &&
+                            (formatFilter == "All" || format == formatFilter)
+                    }
+                    val filtered = when (feedFilter) {
+                        "Ongoing" -> categoryFiltered.filter { match ->
+                            if (onlyJoinedFilter) {
+                                match.id in joinedIds
+                            } else {
+                                match.id in joinedIds || match.roomId.isNotBlank()
+                            }
                         }
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = BlazeOrange,
-                        contentColor = TextPrimary
-                    ),
-                    shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                    modifier = Modifier.heightIn(min = 48.dp)
-                ) {
-                    Text(stringResource(R.string.sponsor_open_button), style = MaterialTheme.typography.labelMedium)
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Icon(
-                        imageVector = Icons.Filled.OpenInNew,
-                        contentDescription = null,
-                        modifier = Modifier.size(14.dp)
-                    )
+                        else -> categoryFiltered
+                    }
+
+                    if (filtered.isEmpty()) {
+                        item {
+                            EmptyArenaState(
+                                title = when (feedFilter) {
+                                    "Ongoing" -> "No Ongoing Matches"
+                                    "Results" -> "No Match Results Yet"
+                                    else -> "No Matches Available"
+                                },
+                                subtitle = when (feedFilter) {
+                                    "Ongoing" -> "Joined matches or active rooms with Room ID appear here."
+                                    "Results" -> "Completed match winners and payouts appear here."
+                                    else -> "New tournaments in this category will appear here soon."
+                                }
+                            )
+                        }
+                    } else {
+                        items(filtered, key = { it.id }) { match ->
+                            TournamentMatchCard(
+                                match = match,
+                                alreadyJoined = match.id in joinedIds,
+                                myRegistration = myRegByMatch[match.id],
+                                isBusy = isBusy,
+                                onJoinClick = { onRequestJoin(match) },
+                                onViewMoreClick = { onInspectMatch(match) }
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -1151,17 +848,12 @@ private fun SponsoredPartnerCard(
 @Composable
 private fun TournamentMatchCard(
     match: TournamentMatch,
-    settings: AppSettings,
-    referralCode: String,
     alreadyJoined: Boolean,
     myRegistration: MatchRegistration?,
     isBusy: Boolean,
     onJoinClick: () -> Unit,
-    onViewMoreClick: () -> Unit,
-    onCopyFeedback: (String) -> Unit
+    onViewMoreClick: () -> Unit
 ) {
-    val context = LocalContext.current
-    val clipboard = LocalClipboardManager.current
     val isFull = match.joinedCount >= match.slots
     val slotsRemaining = (match.slots - match.joinedCount).coerceAtLeast(0L)
     val slotProgress = if (match.slots > 0L) {
@@ -1172,400 +864,181 @@ private fun TournamentMatchCard(
     var showRulesDialog by rememberSaveable(match.id) { mutableStateOf(false) }
 
     Surface(
-        color = ArenaSlateDark,
-        shape = RoundedCornerShape(18.dp),
-        border = BorderStroke(1.dp, if (alreadyJoined) EmeraldWin.copy(alpha = 0.45f) else ArenaSlateBorder),
-        modifier = Modifier.fillMaxWidth()
+        color = ArenaWhiteCard,
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.5.dp, ContestPurple),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onViewMoreClick)
+            .testTag("tournament_match_card_${match.id}")
     ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
             TournamentRulesHeroBanner(
                 match = match,
-                onClick = { showRulesDialog = true }
+                onClick = { showRulesDialog = true },
+                shape = RoundedCornerShape(topStart = 11.dp, topEnd = 11.dp)
             )
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        item {
-                            Surface(
-                                color = BlazeOrangeContainer,
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Text(
-                                    text = match.game,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = BlazeOrange,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
-                        item {
-                            Surface(
-                                color = EmeraldWinContainer,
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Text(
-                                    text = resolvedMode,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = EmeraldWin,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
-                        item {
-                            Surface(
-                                color = ArenaSlateSurface,
-                                shape = RoundedCornerShape(8.dp),
-                                border = BorderStroke(1.dp, ArenaSlateBorder)
-                            ) {
-                                Text(
-                                    text = resolvedFormat,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = TextPrimary,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = match.title,
-                        style = MaterialTheme.typography.titleLarge,
-                        color = TextPrimary
-                    )
-                    Text(
-                        text = "${match.matchTime} • Map: ${match.mapName}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary
-                    )
-                }
                 Row(
-                    verticalAlignment = Alignment.Top,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    IconButton(
-                        onClick = {
-                            val shareText = buildMatchShareText(match, settings, referralCode)
-                            val sendIntent = Intent(Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_TEXT, shareText)
-                            }
-                            runCatching {
-                                context.startActivity(Intent.createChooser(sendIntent, "Share Match Invite"))
-                            }.onFailure {
-                                clipboard.setText(AnnotatedString(shareText))
-                                onCopyFeedback("Match invite copied!")
-                            }
-                        },
+                    Image(
+                        painter = painterResource(id = R.drawable.ic_launcher_art),
+                        contentDescription = match.game,
+                        contentScale = ContentScale.Crop,
                         modifier = Modifier
-                            .minimumInteractiveComponentSize()
-                            .testTag("share_match_button_${match.id}")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Share,
-                            contentDescription = stringResource(R.string.share_match_invite),
-                            tint = BlazeOrange
-                        )
-                    }
-                    Surface(
-                        color = ArenaSlateSurface,
-                        shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(1.dp, if (isFull) BlazeOrange.copy(alpha = 0.6f) else ArenaSlateBorder)
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.End,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                        ) {
-                            Text(
-                                text = "${match.joinedCount}/${match.slots} Slots",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = if (isFull) BlazeOrange else TextPrimary,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = if (isFull) "Room Full" else "$slotsRemaining Open",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = if (isFull) BlazeOrange else EmeraldWin
-                            )
-                        }
-                    }
-                }
-            }
-
-            if (match.slots <= 12L) {
-                MatchTeamSlotsStrip(
-                    totalSlots = match.slots.toInt(),
-                    joinedCount = match.joinedCount.toInt(),
-                    takenSlots = match.takenSlots,
-                    teamFormat = resolvedFormat
-                )
-            } else {
-                LinearProgressIndicator(
-                    progress = { slotProgress },
-                    color = if (isFull) BlazeOrange else EmeraldWin,
-                    trackColor = ArenaSlateSurface,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(6.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                StatTile("Entry", "₹${match.entry}", TextPrimary, Modifier.weight(1f))
-                StatTile("Per Kill", "₹${match.perKill}", BlazeOrange, Modifier.weight(1f))
-                StatTile("Prize Pool", "₹${match.prize}", EmeraldWin, Modifier.weight(1f))
-            }
-
-            if (alreadyJoined) {
-                Surface(
-                    color = ArenaObsidian,
-                    shape = RoundedCornerShape(14.dp),
-                    border = BorderStroke(1.dp, EmeraldWin.copy(alpha = 0.4f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Filled.Key,
-                                    contentDescription = null,
-                                    tint = EmeraldWin,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = stringResource(R.string.room_credentials),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = EmeraldWin
-                                )
-                            }
-                            if (myRegistration != null && myRegistration.slotNumber > 0L) {
-                                Surface(
-                                    color = EmeraldWinContainer,
-                                    shape = RoundedCornerShape(8.dp),
-                                    border = BorderStroke(1.dp, EmeraldWin.copy(alpha = 0.5f))
-                                ) {
-                                    Text(
-                                        text = "Slot #${myRegistration.slotNumber}",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = EmeraldWin,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                    )
-                                }
-                            }
-                        }
-                        if (myRegistration != null && (myRegistration.slotNumber > 0L || myRegistration.ign.isNotBlank())) {
-                            Text(
-                                text = buildString {
-                                    if (myRegistration.slotNumber > 0L) {
-                                        append("Booked Slot #${myRegistration.slotNumber}")
-                                    } else {
-                                        append("Booked")
-                                    }
-                                    if (myRegistration.ign.isNotBlank()) {
-                                        append(" • Room IGN: ${myRegistration.ign}")
-                                    }
-                                },
-                                style = MaterialTheme.typography.labelMedium,
-                                color = BlazeOrange,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                        CredentialCopyRow(
-                            label = "Room ID",
-                            value = match.roomId.ifBlank { "Not published yet" },
-                            canCopy = match.roomId.isNotBlank(),
-                            onCopy = {
-                                clipboard.setText(AnnotatedString(match.roomId))
-                                onCopyFeedback("Room ID copied!")
-                            }
-                        )
-                        CredentialCopyRow(
-                            label = "Password",
-                            value = match.roomPass.ifBlank { "Not published yet" },
-                            canCopy = match.roomPass.isNotBlank(),
-                            onCopy = {
-                                clipboard.setText(AnnotatedString(match.roomPass))
-                                onCopyFeedback("Room Password copied!")
-                            }
-                        )
-                    }
-                }
-            } else {
-                Text(
-                    text = stringResource(R.string.room_locked_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary
-                )
-            }
-
-            if (match.winnerSummary.isNotBlank() || (myRegistration?.prizeWon ?: 0L) > 0L) {
-                Surface(
-                    color = EmeraldWinContainer,
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, EmeraldWin.copy(alpha = 0.5f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        if (match.winnerSummary.isNotBlank()) {
-                            Text(
-                                text = "🏆 Match Winners: ${match.winnerSummary}",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = EmeraldWin,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        if (myRegistration != null && myRegistration.prizeWon > 0L) {
-                            Text(
-                                text = "You Won ₹${myRegistration.prizeWon} • ${myRegistration.payoutNote.ifBlank { "${myRegistration.kills} Kills" }} (Credited to Wallet)",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextPrimary,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                    }
-                }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedButton(
-                    onClick = onViewMoreClick,
-                    border = BorderStroke(1.dp, WalletTealDark),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = 48.dp)
-                        .testTag("view_more_match_button_${match.id}")
-                ) {
-                    Text(
-                        text = if (alreadyJoined) "View Room ID" else "View More",
-                        color = WalletTealDark,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                            .size(46.dp)
+                            .clip(RoundedCornerShape(8.dp))
                     )
-                }
-
-                if (MatchStatus.fromRaw(match.status) == MatchStatus.COMPLETED) {
-                    Button(
-                        onClick = onViewMoreClick,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = ArenaSlateSurface,
-                            contentColor = TextSecondary
-                        ),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .weight(1.35f)
-                            .heightIn(min = 48.dp)
-                    ) {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = if ((myRegistration?.prizeWon ?: 0L) > 0L) {
-                                "Won ₹${myRegistration?.prizeWon}"
-                            } else {
-                                "Completed"
-                            },
-                            fontWeight = FontWeight.Bold,
+                            text = match.title.uppercase(),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = ArenaInkDark,
+                            fontWeight = FontWeight.ExtraBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "Time: ${match.matchTime}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = ArenaInkMuted,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
-                } else {
-                    when {
-                        alreadyJoined -> {
-                            Button(
-                                onClick = onViewMoreClick,
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = EmeraldWinContainer,
-                                    contentColor = EmeraldWin
-                                ),
-                                border = BorderStroke(1.dp, EmeraldWin.copy(alpha = 0.5f)),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier
-                                    .weight(1.35f)
-                                    .heightIn(min = 48.dp)
-                            ) {
-                                Text(
-                                    text = if (myRegistration != null && myRegistration.slotNumber > 0L) {
-                                        "Joined • Slot #${myRegistration.slotNumber}"
-                                    } else {
-                                        "Already Joined"
-                                    },
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
+                }
 
-                        isFull -> {
-                            Button(
-                                onClick = {},
-                                enabled = false,
-                                colors = ButtonDefaults.buttonColors(
-                                    disabledContainerColor = ArenaSlateSurface,
-                                    disabledContentColor = TextMuted
-                                ),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier
-                                    .weight(1.35f)
-                                    .heightIn(min = 48.dp)
-                            ) {
-                                Text("Slots Full", fontWeight = FontWeight.Bold)
-                            }
-                        }
+                // 3-Column Metrics Row 1: PRIZE POOL | PER KILL | ENTRY FEE
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    MatchCardCoinMetric(
+                        label = "PRIZE POOL",
+                        value = "${match.prize}",
+                        modifier = Modifier.weight(1f)
+                    )
+                    MatchCardCoinMetric(
+                        label = "PER KILL",
+                        value = "${match.perKill}",
+                        modifier = Modifier.weight(1f)
+                    )
+                    MatchCardCoinMetric(
+                        label = "ENTRY FEE",
+                        value = "${match.entry}",
+                        modifier = Modifier.weight(1f)
+                    )
+                }
 
-                        else -> {
-                            Button(
-                                onClick = onJoinClick,
-                                enabled = !isBusy,
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = BlazeOrange,
-                                    contentColor = TextPrimary
-                                ),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier
-                                    .weight(1.35f)
-                                    .heightIn(min = 48.dp)
-                                    .testTag("join_match_button_${match.id}")
-                            ) {
-                                Text(
-                                    text = "Join (₹${match.entry})",
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
+                // 3-Column Metrics Row 2: TYPE | VERSION | MAP
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    MatchCardTextMetric(
+                        label = "TYPE",
+                        value = resolvedFormat,
+                        modifier = Modifier.weight(1f)
+                    )
+                    MatchCardTextMetric(
+                        label = "VERSION",
+                        value = resolvedMode,
+                        modifier = Modifier.weight(1f)
+                    )
+                    MatchCardTextMetric(
+                        label = "MAP",
+                        value = match.mapName.ifBlank { "Bermuda" },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                // Bottom Row: Progress Bar + JOIN / JOINED Button
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        LinearProgressIndicator(
+                            progress = { slotProgress },
+                            color = ContestPurple,
+                            trackColor = ArenaLightBorder,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(5.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = if (isFull) "Room Full" else "Only $slotsRemaining spots left",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = ArenaInkMuted
+                            )
+                            Text(
+                                text = "${match.joinedCount}/${match.slots}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = ArenaInkDark,
+                                fontWeight = FontWeight.Medium
+                            )
                         }
+                    }
+
+                    val isCompleted = MatchStatus.fromRaw(match.status) == MatchStatus.COMPLETED
+                    val actionLabel = when {
+                        isCompleted && (myRegistration?.prizeWon ?: 0L) > 0L -> "WON ₹${myRegistration?.prizeWon}"
+                        isCompleted -> "RESULTS"
+                        alreadyJoined && myRegistration != null && myRegistration.slotNumber > 0L ->
+                            "SLOT #${myRegistration.slotNumber}"
+                        alreadyJoined -> "JOINED"
+                        isFull -> "FULL"
+                        else -> "JOIN"
+                    }
+                    val actionColor = when {
+                        alreadyJoined -> EmeraldWin
+                        isCompleted || isFull -> ArenaInkMuted
+                        else -> ContestPurple
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            if (alreadyJoined || isCompleted || isFull) {
+                                onViewMoreClick()
+                            } else {
+                                onJoinClick()
+                            }
+                        },
+                        enabled = !isBusy,
+                        border = BorderStroke(1.2.dp, actionColor),
+                        shape = RoundedCornerShape(6.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+                        modifier = Modifier
+                            .widthIn(min = 104.dp)
+                            .heightIn(min = 40.dp)
+                            .testTag("join_match_button_${match.id}")
+                    ) {
+                        Text(
+                            text = actionLabel,
+                            color = actionColor,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
             }
@@ -1581,135 +1054,80 @@ private fun TournamentMatchCard(
 }
 
 @Composable
-private fun MatchTeamSlotsStrip(
-    totalSlots: Int,
-    joinedCount: Int,
-    takenSlots: List<Long>,
-    teamFormat: String
+private fun MatchCardCoinMetric(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier
 ) {
-    val half = (totalSlots / 2).coerceAtLeast(1)
-    val takenSet = remember(takenSlots, joinedCount) { takenSlots.toSet() }
-    Surface(
-        color = ArenaObsidian,
-        shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, ArenaSlateBorder),
-        modifier = Modifier.fillMaxWidth()
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+        Text(
+            text = label,
+            fontSize = 11.sp,
+            color = ArenaInkMuted,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
         ) {
-            Text(
-                text = "Match Slots ($teamFormat)",
-                style = MaterialTheme.typography.labelSmall,
-                color = TextSecondary
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Surface(
+                color = CoinGold,
+                shape = CircleShape,
+                modifier = Modifier.size(16.dp)
             ) {
-                Row(
-                    modifier = Modifier.weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    for (slotIndex in 0 until half) {
-                        val slotNum = (slotIndex + 1).toLong()
-                        val isTaken = if (takenSet.isNotEmpty()) slotNum in takenSet else slotIndex < joinedCount
-                        Surface(
-                            color = if (isTaken) EmeraldWin else ArenaSlateSurface,
-                            shape = RoundedCornerShape(6.dp),
-                            border = BorderStroke(1.dp, if (isTaken) EmeraldWin else ArenaSlateBorder),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(24.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Text(
-                                    text = "#${slotIndex + 1}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (isTaken) ArenaObsidian else TextSecondary,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                    }
-                }
-                Text(
-                    text = "VS",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = BlazeOrange,
-                    fontWeight = FontWeight.ExtraBold
-                )
-                Row(
-                    modifier = Modifier.weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    for (slotIndex in half until totalSlots) {
-                        val slotNum = (slotIndex + 1).toLong()
-                        val isTaken = if (takenSet.isNotEmpty()) slotNum in takenSet else slotIndex < joinedCount
-                        Surface(
-                            color = if (isTaken) EmeraldWin else ArenaSlateSurface,
-                            shape = RoundedCornerShape(6.dp),
-                            border = BorderStroke(1.dp, if (isTaken) EmeraldWin else ArenaSlateBorder),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(24.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Text(
-                                    text = "#${slotIndex + 1}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (isTaken) ArenaObsidian else TextSecondary,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                    }
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = "C",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFF78350F)
+                    )
                 }
             }
+            Text(
+                text = value,
+                style = MaterialTheme.typography.titleSmall,
+                color = ArenaInkDark,
+                fontWeight = FontWeight.ExtraBold,
+                maxLines = 1
+            )
         }
     }
 }
 
 @Composable
-private fun CredentialCopyRow(
+private fun MatchCardTextMetric(
     label: String,
     value: String,
-    canCopy: Boolean,
-    onCopy: () -> Unit
+    modifier: Modifier = Modifier
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = "$label: ",
-                style = MaterialTheme.typography.bodySmall,
-                color = TextSecondary
-            )
-            Text(
-                text = value,
-                style = MaterialTheme.typography.labelSmall,
-                fontFamily = JetBrainsMonoFamily,
-                color = if (canCopy) BlazeOrange else TextMuted
-            )
-        }
-        if (canCopy) {
-            IconButton(
-                onClick = onCopy,
-                modifier = Modifier.minimumInteractiveComponentSize()
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.ContentCopy,
-                    contentDescription = "Copy $label",
-                    tint = TextSecondary,
-                    modifier = Modifier.size(16.dp)
-                )
-            }
-        }
+        Text(
+            text = label,
+            fontSize = 11.sp,
+            color = ArenaInkMuted,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleSmall,
+            color = ArenaInkDark,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 

@@ -37,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -79,7 +80,8 @@ private fun bannerArtForMatch(match: TournamentMatch): Int {
 fun TournamentRulesHeroBanner(
     match: TournamentMatch,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(14.dp)
 ) {
     val ruleEntries = remember(match.id, match.rules, match.game) {
         parseMatchRuleEntries(match.rules, match.game)
@@ -92,7 +94,7 @@ fun TournamentRulesHeroBanner(
         modifier = modifier
             .fillMaxWidth()
             .height(172.dp)
-            .clip(RoundedCornerShape(14.dp))
+            .clip(shape)
             .clickable(onClick = onClick)
             .testTag("tournament_rules_banner_${match.id}")
     ) {
