@@ -104,8 +104,20 @@ data class AppSettings(
     val sponsorTitle: String = "",
     val sponsorSubtitle: String = "",
     val sponsorUrl: String = "",
+    val depositBonusPercent: Long = 0L,
+    val depositOfferMinAmount: Long = 0L,
+    val depositOfferLabel: String = "",
     @ServerTimestamp val updatedAt: Timestamp? = null
-)
+) {
+    val hasActiveDepositOffer: Boolean
+        get() = depositBonusPercent in 1L..100L
+
+    fun calculateDepositBonus(amount: Long): Long {
+        if (amount <= 0L || depositBonusPercent <= 0L) return 0L
+        if (amount < depositOfferMinAmount) return 0L
+        return ((amount * depositBonusPercent.coerceIn(0L, 100L)) / 100L).coerceIn(0L, amount)
+    }
+}
 
 @Keep
 @IgnoreExtraProperties
@@ -224,6 +236,7 @@ data class DepositRequest(
     val phone: String = "",
     val ign: String = "",
     val amount: Long = 0L,
+    val bonusAmount: Long = 0L,
     val utr: String = "",
     val status: String = "Pending",
     @ServerTimestamp val createdAt: Timestamp? = null,

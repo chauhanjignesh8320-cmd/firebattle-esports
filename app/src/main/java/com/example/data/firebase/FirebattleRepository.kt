@@ -760,6 +760,9 @@ class FirebattleRepository(
                         "sponsorTitle" to "",
                         "sponsorSubtitle" to "",
                         "sponsorUrl" to "",
+                        "depositBonusPercent" to 0L,
+                        "depositOfferMinAmount" to 0L,
+                        "depositOfferLabel" to "",
                         "updatedAt" to FieldValue.serverTimestamp()
                     )
                 ).await()
@@ -1000,7 +1003,7 @@ class FirebattleRepository(
         }
     }
 
-    suspend fun approveDepositAtomic(deposit: DepositRequest): Result<Unit> {
+    suspend fun approveDepositAtomic(deposit: DepositRequest): Result<Long> {
         val path = "deposits/${deposit.id}"
         return try {
             requireUserId()
@@ -1008,30 +1011,51 @@ class FirebattleRepository(
 
             val depRef = db.collection("deposits").document(deposit.id)
             val userRef = db.collection("users").document(deposit.userId)
-            db.runTransaction { tx ->
+            val settingsRef = db.collection("settings").document("app")
+            val creditedBonus = db.runTransaction { tx ->
+                val settingsSnap = tx.get(settingsRef)
                 val depSnap = tx.get(depRef)
                 val userSnap = tx.get(userRef)
                 if (!depSnap.exists()) throw IllegalStateException("Deposit request not found.")
+                if (!userSnap.exists()) throw IllegalStateException("Player account not found.")
                 if (depSnap.getString("status") != "Pending") throw IllegalStateException("Deposit already processed.")
                 val amount = depSnap.getLong("amount") ?: 0L
                 val currentWallet = userSnap.getLong("wallet") ?: 0L
+                val bonusPercent = if (settingsSnap.exists()) {
+                    (settingsSnap.getLong("depositBonusPercent") ?: 0L).coerceIn(0L, 100L)
+                } else {
+                    0L
+                }
+                val minOfferAmount = if (settingsSnap.exists()) {
+                    (settingsSnap.getLong("depositOfferMinAmount") ?: 0L).coerceIn(0L, 100_000L)
+                } else {
+                    0L
+                }
+                val bonusAmount = if (bonusPercent > 0L && amount >= minOfferAmount) {
+                    ((amount * bonusPercent) / 100L).coerceIn(0L, amount)
+                } else {
+                    0L
+                }
+                val updatedWallet = (currentWallet + amount + bonusAmount).coerceAtMost(10_000_000L)
 
                 tx.update(
                     depRef,
                     mapOf(
                         "status" to "Approved",
+                        "bonusAmount" to bonusAmount,
                         "updatedAt" to FieldValue.serverTimestamp()
                     )
                 )
                 tx.update(
                     userRef,
                     mapOf(
-                        "wallet" to (currentWallet + amount),
+                        "wallet" to updatedWallet,
                         "updatedAt" to FieldValue.serverTimestamp()
                     )
                 )
+                bonusAmount
             }.await()
-            Result.success(Unit)
+            Result.success(creditedBonus)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -1160,7 +1184,10 @@ class FirebattleRepository(
         minWithdrawal: Long = 50L,
         sponsorTitle: String = "",
         sponsorSubtitle: String = "",
-        sponsorUrl: String = ""
+        sponsorUrl: String = "",
+        depositBonusPercent: Long = 0L,
+        depositOfferMinAmount: Long = 0L,
+        depositOfferLabel: String = ""
     ): Result<Unit> {
         val cleanUpiId = upiId.trim()
         val cleanUpiName = upiName.trim()
@@ -1169,6 +1196,7 @@ class FirebattleRepository(
         val cleanSponsorTitle = sponsorTitle.trim()
         val cleanSponsorSubtitle = sponsorSubtitle.trim()
         val cleanSponsorUrl = sponsorUrl.trim()
+        val cleanOfferLabel = depositOfferLabel.trim()
         val path = "settings/app"
         return try {
             requireUserId()
@@ -1193,6 +1221,9 @@ class FirebattleRepository(
             ) {
                 "Sponsor link must start with https:// or http:// (max 300 chars)."
             }
+            require(depositBonusPercent in 0L..100L) { "Add Money offer bonus must be between 0% and 100%." }
+            require(depositOfferMinAmount in 0L..100_000L) { "Minimum deposit for offer must be ₹0 to ₹1,00,000." }
+            require(cleanOfferLabel.length <= 80) { "Offer banner text max 80 characters." }
 
             db.collection("settings").document("app").set(
                 mapOf(
@@ -1206,6 +1237,9 @@ class FirebattleRepository(
                     "sponsorTitle" to cleanSponsorTitle,
                     "sponsorSubtitle" to cleanSponsorSubtitle,
                     "sponsorUrl" to cleanSponsorUrl,
+                    "depositBonusPercent" to depositBonusPercent,
+                    "depositOfferMinAmount" to depositOfferMinAmount,
+                    "depositOfferLabel" to cleanOfferLabel,
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
             ).await()

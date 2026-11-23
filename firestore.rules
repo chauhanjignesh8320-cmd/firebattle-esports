@@ -43,7 +43,10 @@ service cloud.firestore {
              (!('minWithdrawal' in data) || (data.minWithdrawal is int && data.minWithdrawal >= 1 && data.minWithdrawal <= 5000)) &&
              (!('sponsorTitle' in data) || (data.sponsorTitle is string && data.sponsorTitle.size() <= 100)) &&
              (!('sponsorSubtitle' in data) || (data.sponsorSubtitle is string && data.sponsorSubtitle.size() <= 180)) &&
-             (!('sponsorUrl' in data) || (data.sponsorUrl is string && data.sponsorUrl.size() <= 300 && (data.sponsorUrl == '' || data.sponsorUrl.matches('^https?://.*'))));
+             (!('sponsorUrl' in data) || (data.sponsorUrl is string && data.sponsorUrl.size() <= 300 && (data.sponsorUrl == '' || data.sponsorUrl.matches('^https?://.*')))) &&
+             (!('depositBonusPercent' in data) || (data.depositBonusPercent is int && data.depositBonusPercent >= 0 && data.depositBonusPercent <= 100)) &&
+             (!('depositOfferMinAmount' in data) || (data.depositOfferMinAmount is int && data.depositOfferMinAmount >= 0 && data.depositOfferMinAmount <= 100000)) &&
+             (!('depositOfferLabel' in data) || (data.depositOfferLabel is string && data.depositOfferLabel.size() <= 80));
     }
 
     function isValidUserProfile(data) {
@@ -102,6 +105,7 @@ service cloud.firestore {
              data.phone is string && data.phone.matches('^[0-9]{10}$') &&
              data.ign is string && data.ign.size() >= 2 && data.ign.size() <= 30 &&
              data.amount is int && data.amount >= 1 && data.amount <= 100000 &&
+             (!('bonusAmount' in data) || (data.bonusAmount is int && data.bonusAmount >= 0 && data.bonusAmount <= data.amount)) &&
              data.utr is string && data.utr.size() >= 6 && data.utr.size() <= 32 &&
              (data.status == 'Pending' || data.status == 'Approved' || data.status == 'Rejected');
     }
@@ -135,7 +139,7 @@ service cloud.firestore {
       allow create: if isAdmin() &&
                        settingId == 'app' &&
                        incoming().keys().hasAll(['upiId', 'upiName', 'adminPhone', 'updatedAt']) &&
-                       incoming().keys().hasOnly(['upiId', 'upiName', 'adminPhone', 'referralBonus', 'appDownloadUrl', 'withdrawalFeePercent', 'minWithdrawal', 'sponsorTitle', 'sponsorSubtitle', 'sponsorUrl', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['upiId', 'upiName', 'adminPhone', 'referralBonus', 'appDownloadUrl', 'withdrawalFeePercent', 'minWithdrawal', 'sponsorTitle', 'sponsorSubtitle', 'sponsorUrl', 'depositBonusPercent', 'depositOfferMinAmount', 'depositOfferLabel', 'updatedAt']) &&
                        isValidSettings(incoming()) &&
                        incoming().updatedAt is timestamp &&
                        incoming().updatedAt <= request.time;
@@ -144,7 +148,7 @@ service cloud.firestore {
                        isValidSettings(incoming()) &&
                        incoming().updatedAt is timestamp &&
                        incoming().updatedAt <= request.time &&
-                       incoming().diff(existing()).affectedKeys().hasOnly(['upiId', 'upiName', 'adminPhone', 'referralBonus', 'appDownloadUrl', 'withdrawalFeePercent', 'minWithdrawal', 'sponsorTitle', 'sponsorSubtitle', 'sponsorUrl', 'updatedAt']);
+                       incoming().diff(existing()).affectedKeys().hasOnly(['upiId', 'upiName', 'adminPhone', 'referralBonus', 'appDownloadUrl', 'withdrawalFeePercent', 'minWithdrawal', 'sponsorTitle', 'sponsorSubtitle', 'sponsorUrl', 'depositBonusPercent', 'depositOfferMinAmount', 'depositOfferLabel', 'updatedAt']);
       allow delete: if false;
     }
 
@@ -371,7 +375,8 @@ service cloud.firestore {
                        incoming().utr == existing().utr &&
                        incoming().createdAt == existing().createdAt &&
                        incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
-                       incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+                       (incoming().status == 'Approved' || incoming().get('bonusAmount', 0) == 0) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['status', 'bonusAmount', 'updatedAt']);
       allow delete: if false;
     }
 

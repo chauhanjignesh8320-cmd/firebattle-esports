@@ -1309,3 +1309,127 @@ test("Players can book specific numbered slots with custom IGN while duplicate s
   await assertSucceeds(bobValidSlot.commit());
 });
 
+test("Add Money Offer settings and admin-only deposit bonusAmount rules are enforced", async () => {
+  const adminDb = adminContext().firestore();
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID, { email: "alice@test.com", email_verified: true }).firestore();
+
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().collection("users").doc(ALICE_UID).set({
+      userId: ALICE_UID,
+      email: "alice@test.com",
+      ign: "AliceFF",
+      gameUid: "99887766",
+      phone: "9876543210",
+      wallet: 50,
+      createdAt: pastDate(10000),
+      updatedAt: pastDate(10000),
+    });
+  });
+
+  // Admin cannot set depositBonusPercent > 100
+  await assertFails(
+    adminDb.collection("settings").doc("app").set({
+      upiId: "firebattle@upi",
+      upiName: "Firebattle Esports",
+      adminPhone: "9876543210",
+      depositBonusPercent: 150,
+      depositOfferMinAmount: 100,
+      depositOfferLabel: "Too High Offer",
+      updatedAt: pastDate(9000),
+    })
+  );
+
+  // Admin configures valid 10% Add Money Offer for ₹100+ deposits
+  await assertSucceeds(
+    adminDb.collection("settings").doc("app").set({
+      upiId: "firebattle@upi",
+      upiName: "Firebattle Esports",
+      adminPhone: "9876543210",
+      depositBonusPercent: 10,
+      depositOfferMinAmount: 100,
+      depositOfferLabel: "Diwali Offer: +10% Extra!",
+      updatedAt: pastDate(8000),
+    })
+  );
+
+  // Player CANNOT self-assign bonusAmount when submitting a deposit request
+  await assertFails(
+    aliceDb.collection("deposits").doc("dep_forged_bonus").set({
+      userId: ALICE_UID,
+      phone: "9876543210",
+      ign: "AliceFF",
+      amount: 200,
+      bonusAmount: 20,
+      utr: "112233445566",
+      status: "Pending",
+      createdAt: pastDate(7000),
+      updatedAt: pastDate(7000),
+    })
+  );
+
+  // Player submits clean ₹200 deposit request
+  await assertSucceeds(
+    aliceDb.collection("deposits").doc("dep_offer_1").set({
+      userId: ALICE_UID,
+      phone: "9876543210",
+      ign: "AliceFF",
+      amount: 200,
+      utr: "112233445566",
+      status: "Pending",
+      createdAt: pastDate(6000),
+      updatedAt: pastDate(6000),
+    })
+  );
+
+  // Admin approves deposit with excessive bonusAmount (> deposit.amount) -> rejected
+  await assertFails(
+    adminDb.collection("deposits").doc("dep_offer_1").update({
+      status: "Approved",
+      bonusAmount: 250,
+      updatedAt: pastDate(5000),
+    })
+  );
+
+  // Admin approves ₹200 deposit + ₹20 offer bonus (total wallet 50 -> 270) atomically
+  const approveOfferBatch = adminDb.batch();
+  approveOfferBatch.update(adminDb.collection("deposits").doc("dep_offer_1"), {
+    status: "Approved",
+    bonusAmount: 20,
+    updatedAt: pastDate(4000),
+  });
+  approveOfferBatch.update(adminDb.collection("users").doc(ALICE_UID), {
+    wallet: 270,
+    updatedAt: pastDate(4000),
+  });
+  await assertSucceeds(approveOfferBatch.commit());
+
+  // Rejected deposit cannot carry a non-zero bonusAmount
+  await assertSucceeds(
+    aliceDb.collection("deposits").doc("dep_offer_2").set({
+      userId: ALICE_UID,
+      phone: "9876543210",
+      ign: "AliceFF",
+      amount: 100,
+      utr: "998877665544",
+      status: "Pending",
+      createdAt: pastDate(3000),
+      updatedAt: pastDate(3000),
+    })
+  );
+  await assertFails(
+    adminDb.collection("deposits").doc("dep_offer_2").update({
+      status: "Rejected",
+      bonusAmount: 10,
+      updatedAt: pastDate(2000),
+    })
+  );
+  await assertSucceeds(
+    adminDb.collection("deposits").doc("dep_offer_2").update({
+      status: "Rejected",
+      bonusAmount: 0,
+      updatedAt: pastDate(1000),
+    })
+  );
+});
+
+

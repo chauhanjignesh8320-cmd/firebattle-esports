@@ -149,12 +149,13 @@ fun PlayerWalletSection(
         }
     }
 
-    val balanceBreakdown = remember(profile.wallet, profile.referralEarnings, registrations, withdrawals) {
+    val balanceBreakdown = remember(profile.wallet, profile.referralEarnings, deposits, registrations, withdrawals) {
         val grossWinnings = registrations.sumOf { it.prizeWon }
         val nonRejectedWithdrawals = withdrawals.filter { it.status != "Rejected" }.sumOf { it.amount }
         val winningBal = (grossWinnings - nonRejectedWithdrawals).coerceIn(0L, profile.wallet)
         val afterWinning = (profile.wallet - winningBal).coerceAtLeast(0L)
-        val bonusBal = profile.referralEarnings.coerceIn(0L, afterWinning)
+        val depositBonusEarned = deposits.filter { it.status == "Approved" }.sumOf { it.bonusAmount }
+        val bonusBal = (profile.referralEarnings + depositBonusEarned).coerceIn(0L, afterWinning)
         val depositedBal = (afterWinning - bonusBal).coerceAtLeast(0L)
         Triple(depositedBal, winningBal, bonusBal)
     }
@@ -641,6 +642,45 @@ private fun WalletOverviewPromptCard(
                 }
             }
 
+            if (settings.hasActiveDepositOffer) {
+                val offerHeadline = settings.depositOfferLabel.trim().ifBlank {
+                    "ADD MONEY OFFER: +${settings.depositBonusPercent}% EXTRA BONUS!"
+                }
+                val minHint = if (settings.depositOfferMinAmount > 0L) {
+                    "On deposits of ₹${settings.depositOfferMinAmount}+ • Tap Add Money to claim"
+                } else {
+                    "Extra ${settings.depositBonusPercent}% bonus on every UPI deposit • Tap to claim"
+                }
+                Surface(
+                    color = CoinGold.copy(alpha = 0.16f),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, CoinGold.copy(alpha = 0.7f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable(onClick = onOpenAddMoney)
+                        .testTag("wallet_overview_deposit_offer_banner")
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = "🎁 $offerHeadline",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = ArenaInkDark,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                        Text(
+                            text = minHint,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = EmeraldWin,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+
             if (pendingDepositsCount > 0 || pendingWithdrawalsCount > 0) {
                 Surface(
                     color = BlazeOrange.copy(alpha = 0.1f),
@@ -755,6 +795,42 @@ private fun AddMoneyRealUpiPanel(
                 fontWeight = FontWeight.Bold
             )
 
+            if (settings.hasActiveDepositOffer) {
+                val offerHeadline = settings.depositOfferLabel.trim().ifBlank {
+                    "ADD MONEY OFFER: +${settings.depositBonusPercent}% EXTRA BONUS!"
+                }
+                val offerSub = if (settings.depositOfferMinAmount > 0L) {
+                    "Valid on deposits of ₹${settings.depositOfferMinAmount} or more. Bonus added automatically on approval."
+                } else {
+                    "Get +${settings.depositBonusPercent}% extra bonus automatically when Admin approves your deposit."
+                }
+                Surface(
+                    color = CoinGold.copy(alpha = 0.18f),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, CoinGold.copy(alpha = 0.75f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("add_money_offer_banner")
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Text(
+                            text = "🎁 $offerHeadline",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = ArenaInkDark,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                        Text(
+                            text = offerSub,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = ArenaInkMuted
+                        )
+                    }
+                }
+            }
+
             Surface(
                 color = ArenaWhiteCard,
                 shape = RoundedCornerShape(14.dp),
@@ -851,6 +927,58 @@ private fun AddMoneyRealUpiPanel(
                     .fillMaxWidth()
                     .testTag("deposit_amount_input")
             )
+
+            val enteredDepAmount = depAmount.toLongOrNull() ?: 0L
+            if (settings.hasActiveDepositOffer && enteredDepAmount > 0L) {
+                val expectedBonus = settings.calculateDepositBonus(enteredDepAmount)
+                Surface(
+                    color = ArenaWhiteCard,
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(
+                        1.dp,
+                        if (expectedBonus > 0L) EmeraldWin.copy(alpha = 0.55f) else ArenaLightBorder
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("deposit_offer_breakdown")
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        if (expectedBonus > 0L) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("You Pay via UPI", style = MaterialTheme.typography.bodySmall, color = ArenaInkMuted)
+                                Text("₹$enteredDepAmount", style = MaterialTheme.typography.bodySmall, color = ArenaInkDark, fontWeight = FontWeight.SemiBold)
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Offer Bonus (+${settings.depositBonusPercent}%)", style = MaterialTheme.typography.bodySmall, color = EmeraldWin, fontWeight = FontWeight.SemiBold)
+                                Text("+₹$expectedBonus", style = MaterialTheme.typography.bodySmall, color = EmeraldWin, fontWeight = FontWeight.Bold)
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Total Wallet Credit", style = MaterialTheme.typography.labelLarge, color = ArenaInkDark)
+                                Text("₹${enteredDepAmount + expectedBonus}", style = MaterialTheme.typography.labelLarge, color = ContestPurple, fontWeight = FontWeight.ExtraBold)
+                            }
+                        } else {
+                            Text(
+                                text = "Add ₹${settings.depositOfferMinAmount}+ to unlock +${settings.depositBonusPercent}% Offer Bonus!",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = BlazeOrange,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+            }
 
             UpiQrPaymentCard(
                 upiId = settings.upiId,
@@ -1093,12 +1221,17 @@ private fun WalletTransactionsPanel(
     val entries = remember(deposits, withdrawals, registrations) {
         buildList {
             deposits.forEach { dep ->
+                val creditedTotal = dep.amount + dep.bonusAmount
                 add(
                     WalletTxEntry(
                         id = "dep_${dep.id}",
                         title = "UPI Deposit • UTR ${dep.utr}",
-                        subtitle = formatTimestampShort(dep.createdAt),
-                        amountText = "+₹${dep.amount}",
+                        subtitle = if (dep.bonusAmount > 0L) {
+                            "Paid ₹${dep.amount} + ₹${dep.bonusAmount} Offer Bonus • ${formatTimestampShort(dep.createdAt)}"
+                        } else {
+                            formatTimestampShort(dep.createdAt)
+                        },
+                        amountText = "+₹$creditedTotal",
                         isCredit = true,
                         status = dep.status,
                         timestamp = dep.createdAt

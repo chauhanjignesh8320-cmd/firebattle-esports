@@ -62,6 +62,18 @@
           "type": "string",
           "description": "Optional sponsor target URL opened when players tap the banner."
         },
+        "depositBonusPercent": {
+          "type": "integer",
+          "description": "Optional extra percentage bonus (0-100) awarded when players add money via UPI."
+        },
+        "depositOfferMinAmount": {
+          "type": "integer",
+          "description": "Minimum deposit amount in INR required to qualify for the deposit offer bonus."
+        },
+        "depositOfferLabel": {
+          "type": "string",
+          "description": "Optional promotional headline for the active Add Money deposit offer."
+        },
         "updatedAt": {
           "type": "string",
           "format": "date-time",
@@ -299,7 +311,11 @@
         },
         "amount": {
           "type": "integer",
-          "description": "Deposit amount in INR."
+          "description": "Deposit amount paid via UPI in INR."
+        },
+        "bonusAmount": {
+          "type": "integer",
+          "description": "Extra offer bonus in INR credited by admin upon deposit approval."
         },
         "utr": {
           "type": "string",

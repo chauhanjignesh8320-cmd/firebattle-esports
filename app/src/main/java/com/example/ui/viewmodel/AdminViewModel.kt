@@ -38,7 +38,10 @@ data class AdminSettingsDraft(
     val minWithdrawalText: String,
     val sponsorTitle: String,
     val sponsorSubtitle: String,
-    val sponsorUrl: String
+    val sponsorUrl: String,
+    val depositBonusPercentText: String = "0",
+    val depositOfferMinAmountText: String = "0",
+    val depositOfferLabel: String = ""
 )
 
 class AdminViewModel(
@@ -190,8 +193,25 @@ class AdminViewModel(
     }
 
     fun approveDeposit(deposit: DepositRequest) {
-        runAction("₹${deposit.amount} credited to ${deposit.ign}!") {
-            repository.approveDepositAtomic(deposit)
+        if (_isBusy.value) return
+        viewModelScope.launch {
+            _isBusy.value = true
+            try {
+                val result = repository.approveDepositAtomic(deposit)
+                result.fold(
+                    onSuccess = { bonus ->
+                        val msg = if (bonus > 0L) {
+                            "₹${deposit.amount} + ₹$bonus Offer Bonus = ₹${deposit.amount + bonus} credited to ${deposit.ign}!"
+                        } else {
+                            "₹${deposit.amount} credited to ${deposit.ign}!"
+                        }
+                        _events.tryEmit(msg)
+                    },
+                    onFailure = { err -> _events.tryEmit(err.localizedMessage ?: "Admin action failed.") }
+                )
+            } finally {
+                _isBusy.value = false
+            }
         }
     }
 
@@ -253,6 +273,8 @@ class AdminViewModel(
         val bonus = draft.referralBonusText.trim().ifEmpty { "0" }.toLongOrNull()
         val feePercent = draft.withdrawalFeePercentText.trim().ifEmpty { "0" }.toLongOrNull()
         val minWd = draft.minWithdrawalText.trim().ifEmpty { "50" }.toLongOrNull()
+        val offerPercent = draft.depositBonusPercentText.trim().ifEmpty { "0" }.toLongOrNull()
+        val offerMinAmount = draft.depositOfferMinAmountText.trim().ifEmpty { "0" }.toLongOrNull()
         if (bonus == null) {
             _events.tryEmit("Enter a valid numeric referral bonus (₹0 - ₹1000).")
             return
@@ -263,6 +285,14 @@ class AdminViewModel(
         }
         if (minWd == null || minWd !in 1L..5000L) {
             _events.tryEmit("Minimum withdrawal must be between ₹1 and ₹5,000.")
+            return
+        }
+        if (offerPercent == null || offerPercent !in 0L..100L) {
+            _events.tryEmit("Add Money offer bonus must be between 0% and 100%.")
+            return
+        }
+        if (offerMinAmount == null || offerMinAmount !in 0L..100_000L) {
+            _events.tryEmit("Minimum deposit for offer must be between ₹0 and ₹1,00,000.")
             return
         }
         runAction("Settings saved to Firestore!") {
@@ -276,7 +306,10 @@ class AdminViewModel(
                 minWithdrawal = minWd,
                 sponsorTitle = draft.sponsorTitle,
                 sponsorSubtitle = draft.sponsorSubtitle,
-                sponsorUrl = draft.sponsorUrl
+                sponsorUrl = draft.sponsorUrl,
+                depositBonusPercent = offerPercent,
+                depositOfferMinAmount = offerMinAmount,
+                depositOfferLabel = draft.depositOfferLabel
             )
         }
     }

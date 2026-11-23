@@ -44,6 +44,8 @@ import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -101,6 +103,7 @@ import com.example.ui.theme.ArenaSlateDark
 import com.example.ui.theme.ArenaSlateSurface
 import com.example.ui.theme.BlazeOrange
 import com.example.ui.theme.BlazeOrangeContainer
+import com.example.ui.theme.CoinGold
 import com.example.ui.theme.CrimsonReject
 import com.example.ui.theme.EmeraldWin
 import com.example.ui.theme.JetBrainsMonoFamily
@@ -601,9 +604,11 @@ private fun AdminTabBody(
                                 )
                             }
                         } else {
+                            val activeSettings = (settingsState as? UiState.Success)?.data ?: AppSettings()
                             items(depositsState.data, key = { it.id }) { dep ->
                                 AdminDepositCard(
                                     deposit = dep,
+                                    settings = activeSettings,
                                     isBusy = isBusy,
                                     onApprove = { onApproveDeposit(dep) },
                                     onReject = { onRejectDeposit(dep.id) }
@@ -699,10 +704,16 @@ private fun AdminTabBody(
 @Composable
 private fun AdminDepositCard(
     deposit: DepositRequest,
+    settings: AppSettings,
     isBusy: Boolean,
     onApprove: () -> Unit,
     onReject: () -> Unit
 ) {
+    val previewBonus = if (deposit.status == "Pending") {
+        settings.calculateDepositBonus(deposit.amount)
+    } else {
+        deposit.bonusAmount
+    }
     Surface(
         color = ArenaSlateDark,
         shape = RoundedCornerShape(16.dp),
@@ -730,6 +741,19 @@ private fun AdminDepositCard(
                         fontFamily = JetBrainsMonoFamily,
                         color = TextPrimary
                     )
+                    if (previewBonus > 0L) {
+                        val bonusLabel = if (deposit.status == "Pending") {
+                            "Offer Preview (+${settings.depositBonusPercent}%): +₹$previewBonus Bonus -> Credit ₹${deposit.amount + previewBonus}"
+                        } else {
+                            "Credited with +₹$previewBonus Offer Bonus (Total ₹${deposit.amount + previewBonus})"
+                        }
+                        Text(
+                            text = bonusLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = CoinGold,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                     Text(
                         text = formatTimestampShort(deposit.createdAt),
                         style = MaterialTheme.typography.bodySmall,
@@ -1390,6 +1414,15 @@ private fun AdminSettingsCard(
     var sponsorUrl by rememberSaveable(initialSettings.sponsorUrl) {
         mutableStateOf(initialSettings.sponsorUrl)
     }
+    var depositBonusPercent by rememberSaveable(initialSettings.depositBonusPercent) {
+        mutableStateOf(initialSettings.depositBonusPercent.toString())
+    }
+    var depositOfferMinAmount by rememberSaveable(initialSettings.depositOfferMinAmount) {
+        mutableStateOf(initialSettings.depositOfferMinAmount.toString())
+    }
+    var depositOfferLabel by rememberSaveable(initialSettings.depositOfferLabel) {
+        mutableStateOf(initialSettings.depositOfferLabel)
+    }
 
     val fieldColors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = EmeraldWin,
@@ -1533,6 +1566,101 @@ private fun AdminSettingsCard(
                     .testTag("settings_sponsor_url_input")
             )
 
+            Text(
+                text = "Add Money Offer (Deposit Bonus %)",
+                style = MaterialTheme.typography.titleMedium,
+                color = CoinGold,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf("0", "5", "10", "15", "20").forEach { pctPreset ->
+                    val isSelected = (depositBonusPercent.toLongOrNull() ?: 0L).toString() == pctPreset
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = { depositBonusPercent = pctPreset },
+                        label = {
+                            Text(
+                                text = if (pctPreset == "0") "Off" else "+$pctPreset%",
+                                fontWeight = FontWeight.Bold
+                            )
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = CoinGold,
+                            selectedLabelColor = ArenaObsidian,
+                            containerColor = ArenaSlateSurface,
+                            labelColor = TextPrimary
+                        ),
+                        border = FilterChipDefaults.filterChipBorder(
+                            enabled = true,
+                            selected = isSelected,
+                            borderColor = ArenaSlateBorder
+                        ),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = depositBonusPercent,
+                    onValueChange = { depositBonusPercent = it.filter { ch -> ch.isDigit() }.take(3) },
+                    label = { Text("Bonus % (0-100)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    colors = fieldColors,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("settings_deposit_bonus_percent_input")
+                )
+                OutlinedTextField(
+                    value = depositOfferMinAmount,
+                    onValueChange = { depositOfferMinAmount = it.filter { ch -> ch.isDigit() }.take(6) },
+                    label = { Text("Min Deposit (₹)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    colors = fieldColors,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("settings_deposit_offer_min_input")
+                )
+            }
+            OutlinedTextField(
+                value = depositOfferLabel,
+                onValueChange = { depositOfferLabel = it.take(80) },
+                label = { Text("Offer Banner Title (Optional)") },
+                placeholder = { Text("e.g. Diwali Offer: +10% Extra Bonus!", color = TextMuted) },
+                singleLine = true,
+                colors = fieldColors,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("settings_deposit_offer_label_input")
+            )
+            val previewPct = (depositBonusPercent.toLongOrNull() ?: 0L).coerceIn(0L, 100L)
+            val previewMin = (depositOfferMinAmount.toLongOrNull() ?: 0L).coerceAtLeast(0L)
+            if (previewPct > 0L) {
+                val sampleAmt = maxOf(100L, previewMin)
+                val sampleBonus = (sampleAmt * previewPct) / 100L
+                Surface(
+                    color = EmeraldWin.copy(alpha = 0.14f),
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, EmeraldWin.copy(alpha = 0.4f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Offer Preview: Player pays ₹$sampleAmt -> gets ₹$sampleAmt + ₹$sampleBonus Bonus = ₹${sampleAmt + sampleBonus} total",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = EmeraldWin,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                    )
+                }
+            }
+
             Button(
                 onClick = {
                     onSave(
@@ -1546,7 +1674,10 @@ private fun AdminSettingsCard(
                             minWithdrawalText = minWithdrawal,
                             sponsorTitle = sponsorTitle,
                             sponsorSubtitle = sponsorSubtitle,
-                            sponsorUrl = sponsorUrl
+                            sponsorUrl = sponsorUrl,
+                            depositBonusPercentText = depositBonusPercent,
+                            depositOfferMinAmountText = depositOfferMinAmount,
+                            depositOfferLabel = depositOfferLabel
                         )
                     )
                 },
