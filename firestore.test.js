@@ -328,6 +328,7 @@ test("Deposit & Withdrawal workflow with atomic wallet balance guards", async ()
       gameUid: "99887766",
       phone: "9876543210",
       wallet: 100,
+      winningBalance: 0,
       createdAt: pastDate(10000),
       updatedAt: pastDate(10000),
     });
@@ -364,7 +365,7 @@ test("Deposit & Withdrawal workflow with atomic wallet balance guards", async ()
   await assertSucceeds(aliceDb.collection("deposits").where("userId", "==", ALICE_UID).get());
   await assertFails(aliceDb.collection("deposits").get());
 
-  // Admin approves deposit atomically
+  // Admin approves deposit atomically (wallet 100 -> 300, winningBalance stays 0)
   const approveBatch = adminDb.batch();
   approveBatch.update(adminDb.collection("deposits").doc("dep_1"), {
     status: "Approved",
@@ -376,7 +377,34 @@ test("Deposit & Withdrawal workflow with atomic wallet balance guards", async ()
   });
   await assertSucceeds(approveBatch.commit());
 
-  // Withdrawal without deducting wallet fails
+  // Player CANNOT withdraw freshly deposited money without Winning balance!
+  const instantDepositWdBatch = aliceDb.batch();
+  instantDepositWdBatch.set(aliceDb.collection("withdrawals").doc("wd_deposit_blocked"), {
+    userId: ALICE_UID,
+    phone: "9876543210",
+    ign: "AliceFF",
+    amount: 150,
+    upiId: "alice@ybl",
+    status: "Pending",
+    createdAt: pastDate(450),
+    updatedAt: pastDate(450),
+  });
+  instantDepositWdBatch.update(aliceDb.collection("users").doc(ALICE_UID), {
+    wallet: 150,
+    updatedAt: pastDate(450),
+  });
+  await assertFails(instantDepositWdBatch.commit());
+
+  // Player wins a match prize (admin credits ₹200 winningBalance -> wallet 500, winningBalance 200)
+  await assertSucceeds(
+    adminDb.collection("users").doc(ALICE_UID).update({
+      wallet: 500,
+      winningBalance: 200,
+      updatedAt: pastDate(420),
+    })
+  );
+
+  // Withdrawal without deducting wallet/winningBalance fails
   await assertFails(
     aliceDb.collection("withdrawals").doc("wd_bad").set({
       userId: ALICE_UID,
@@ -390,7 +418,15 @@ test("Deposit & Withdrawal workflow with atomic wallet balance guards", async ()
     })
   );
 
-  // Atomic withdrawal request deducts wallet from 300 -> 150
+  // Player CANNOT inflate own winningBalance
+  await assertFails(
+    aliceDb.collection("users").doc(ALICE_UID).update({
+      winningBalance: 400,
+      updatedAt: pastDate(350),
+    })
+  );
+
+  // Atomic withdrawal request deducts BOTH wallet (500 -> 350) and winningBalance (200 -> 50)
   const wdBatch = aliceDb.batch();
   wdBatch.set(aliceDb.collection("withdrawals").doc("wd_1"), {
     userId: ALICE_UID,
@@ -403,19 +439,21 @@ test("Deposit & Withdrawal workflow with atomic wallet balance guards", async ()
     updatedAt: pastDate(300),
   });
   wdBatch.update(aliceDb.collection("users").doc(ALICE_UID), {
-    wallet: 150,
+    wallet: 350,
+    winningBalance: 50,
     updatedAt: pastDate(300),
   });
   await assertSucceeds(wdBatch.commit());
 
-  // Admin rejects and refunds withdrawal (150 -> 300)
+  // Admin rejects and refunds withdrawal (wallet 350 -> 500, winningBalance 50 -> 200)
   const rejectBatch = adminDb.batch();
   rejectBatch.update(adminDb.collection("withdrawals").doc("wd_1"), {
     status: "Rejected",
     updatedAt: pastDate(100),
   });
   rejectBatch.update(adminDb.collection("users").doc(ALICE_UID), {
-    wallet: 300,
+    wallet: 500,
+    winningBalance: 200,
     updatedAt: pastDate(100),
   });
   await assertSucceeds(rejectBatch.commit());
@@ -613,6 +651,7 @@ test("Organizer withdrawal fee %, minWithdrawal, and sponsor URL rules are enfor
       gameUid: "99887766",
       phone: "9876543210",
       wallet: 300,
+      winningBalance: 300,
       createdAt: pastDate(10000),
       updatedAt: pastDate(10000),
     });
@@ -672,6 +711,7 @@ test("Organizer withdrawal fee %, minWithdrawal, and sponsor URL rules are enfor
   });
   lowBatch.update(aliceDb.collection("users").doc(ALICE_UID), {
     wallet: 260,
+    winningBalance: 260,
     updatedAt: pastDate(3000),
   });
   await assertFails(lowBatch.commit());
@@ -692,6 +732,7 @@ test("Organizer withdrawal fee %, minWithdrawal, and sponsor URL rules are enfor
   });
   cheatBatch.update(aliceDb.collection("users").doc(ALICE_UID), {
     wallet: 200,
+    winningBalance: 200,
     updatedAt: pastDate(2000),
   });
   await assertFails(cheatBatch.commit());
@@ -712,6 +753,7 @@ test("Organizer withdrawal fee %, minWithdrawal, and sponsor URL rules are enfor
   });
   okBatch.update(aliceDb.collection("users").doc(ALICE_UID), {
     wallet: 200,
+    winningBalance: 200,
     updatedAt: pastDate(1000),
   });
   await assertSucceeds(okBatch.commit());
@@ -1431,5 +1473,136 @@ test("Add Money Offer settings and admin-only deposit bonusAmount rules are enfo
     })
   );
 });
+
+test("Deposited & Bonus money must be played to win before withdrawal (winningBalance lifecycle)", async () => {
+  const adminDb = adminContext().firestore();
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID, { email: "alice@test.com", email_verified: true }).firestore();
+
+  // Alice has ₹100 Deposited (winningBalance = 0) and joins a ₹50 match -> wins ₹120
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await db.collection("users").doc(ALICE_UID).set({
+      userId: ALICE_UID,
+      email: "alice@test.com",
+      ign: "AliceFF",
+      gameUid: "99887766",
+      phone: "9876543210",
+      wallet: 100,
+      winningBalance: 0,
+      createdAt: pastDate(10000),
+      updatedAt: pastDate(10000),
+    });
+    await db.collection("matches").doc("play_to_win").set({
+      title: "Play To Win #1",
+      game: "Free Fire MAX",
+      matchMode: "Custom",
+      teamFormat: "4vs4",
+      matchTime: "9:00 PM",
+      mapName: "Bermuda",
+      entry: 50,
+      perKill: 10,
+      prize: 200,
+      slots: 8,
+      joinedCount: 0,
+      takenSlots: [],
+      roomId: "",
+      roomPass: "",
+      status: "LIVE",
+      createdBy: ADMIN_UID,
+      createdAt: pastDate(9000),
+      updatedAt: pastDate(9000),
+    });
+  });
+
+  // Cannot withdraw ₹50 before winning
+  const blockedWd = aliceDb.batch();
+  blockedWd.set(aliceDb.collection("withdrawals").doc("wd_before_win"), {
+    userId: ALICE_UID,
+    phone: "9876543210",
+    ign: "AliceFF",
+    amount: 50,
+    upiId: "alice@ybl",
+    status: "Pending",
+    createdAt: pastDate(8000),
+    updatedAt: pastDate(8000),
+  });
+  blockedWd.update(aliceDb.collection("users").doc(ALICE_UID), {
+    wallet: 50,
+    updatedAt: pastDate(8000),
+  });
+  await assertFails(blockedWd.commit());
+
+  // Alice joins match (₹50 deducted from Deposited, wallet = 50, winningBalance = 0)
+  const joinBatch = aliceDb.batch();
+  joinBatch.set(aliceDb.collection("registrations").doc(`play_to_win_${ALICE_UID}`), {
+    matchId: "play_to_win",
+    userId: ALICE_UID,
+    ign: "AliceFF",
+    gameUid: "99887766",
+    phone: "9876543210",
+    entryPaid: 50,
+    slotNumber: 1,
+    createdAt: pastDate(7000),
+  });
+  joinBatch.update(aliceDb.collection("matches").doc("play_to_win"), {
+    joinedCount: 1,
+    takenSlots: [1],
+    updatedAt: pastDate(7000),
+  });
+  joinBatch.update(aliceDb.collection("users").doc(ALICE_UID), {
+    wallet: 50,
+    winningBalance: 0,
+    updatedAt: pastDate(7000),
+  });
+  await assertSucceeds(joinBatch.commit());
+
+  // Admin credits ₹120 match prize -> wallet = 170, winningBalance = 120
+  await assertSucceeds(
+    adminDb.collection("users").doc(ALICE_UID).update({
+      wallet: 170,
+      winningBalance: 120,
+      updatedAt: pastDate(6000),
+    })
+  );
+
+  // Alice CANNOT withdraw ₹150 (total wallet is 170, but winningBalance is only 120!)
+  const overWinWd = aliceDb.batch();
+  overWinWd.set(aliceDb.collection("withdrawals").doc("wd_over_win"), {
+    userId: ALICE_UID,
+    phone: "9876543210",
+    ign: "AliceFF",
+    amount: 150,
+    upiId: "alice@ybl",
+    status: "Pending",
+    createdAt: pastDate(5000),
+    updatedAt: pastDate(5000),
+  });
+  overWinWd.update(aliceDb.collection("users").doc(ALICE_UID), {
+    wallet: 20,
+    winningBalance: 0,
+    updatedAt: pastDate(5000),
+  });
+  await assertFails(overWinWd.commit());
+
+  // Alice CAN withdraw ₹120 (from winningBalance 120 -> 0; remaining ₹50 stays unwithdrawable deposit)
+  const validWinWd = aliceDb.batch();
+  validWinWd.set(aliceDb.collection("withdrawals").doc("wd_valid_win"), {
+    userId: ALICE_UID,
+    phone: "9876543210",
+    ign: "AliceFF",
+    amount: 120,
+    upiId: "alice@ybl",
+    status: "Pending",
+    createdAt: pastDate(4000),
+    updatedAt: pastDate(4000),
+  });
+  validWinWd.update(aliceDb.collection("users").doc(ALICE_UID), {
+    wallet: 50,
+    winningBalance: 0,
+    updatedAt: pastDate(4000),
+  });
+  await assertSucceeds(validWinWd.commit());
+});
+
 
 

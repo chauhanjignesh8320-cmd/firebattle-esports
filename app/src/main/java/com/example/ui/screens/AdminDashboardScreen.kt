@@ -43,6 +43,8 @@ import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -131,7 +133,7 @@ fun AdminDashboardScreen(
     onRejectDeposit: (String) -> Unit,
     onMarkWithdrawalPaid: (String) -> Unit,
     onRejectWithdrawal: (WithdrawalRequest) -> Unit,
-    onAdjustUserWallet: (UserProfile, String, () -> Unit) -> Unit,
+    onAdjustUserWallet: (UserProfile, String, Boolean, () -> Unit) -> Unit,
     onSaveSettings: (AdminSettingsDraft) -> Unit,
     onWithdrawOwnerProfit: (amountText: String, upiId: String, note: String, availableProfit: Long, onSuccess: () -> Unit) -> Unit,
     onPayMatchReward: (
@@ -326,6 +328,7 @@ fun AdminDashboardScreen(
     if (userToAdjustWallet != null) {
         val target = userToAdjustWallet!!
         var deltaText by rememberSaveable(target.userId) { mutableStateOf("") }
+        var addAsWinning by rememberSaveable(target.userId) { mutableStateOf(false) }
         AlertDialog(
             onDismissRequest = { userToAdjustWallet = null },
             containerColor = ArenaSlateDark,
@@ -333,7 +336,7 @@ fun AdminDashboardScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "Current Balance: ₹${target.wallet}. Enter positive amount to add (e.g. 50) or negative to deduct (e.g. -50).",
+                        text = "Total Balance: ₹${target.wallet} (Winning: ₹${target.winningBalance}). Enter positive amount to add (e.g. 50) or negative to deduct (e.g. -50).",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary
                     )
@@ -344,13 +347,25 @@ fun AdminDashboardScreen(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true
                     )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = addAsWinning,
+                            onCheckedChange = { addAsWinning = it },
+                            colors = CheckboxDefaults.colors(checkedColor = EmeraldWin)
+                        )
+                        Text(
+                            text = "Add to Winning Balance (Withdrawable)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextPrimary
+                        )
+                    }
                 }
             },
             confirmButton = {
                 Button(
                     enabled = !isBusy,
                     onClick = {
-                        onAdjustUserWallet(target, deltaText) {
+                        onAdjustUserWallet(target, deltaText, addAsWinning) {
                             userToAdjustWallet = null
                         }
                     },
@@ -1005,6 +1020,11 @@ private fun AdminPlayerCard(
                     style = MaterialTheme.typography.titleMedium,
                     color = EmeraldWin,
                     fontWeight = FontWeight.ExtraBold
+                )
+                Text(
+                    text = "Win: ₹${player.winningBalance}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = CoinGold
                 )
                 Button(
                     onClick = onAdjustBalance,

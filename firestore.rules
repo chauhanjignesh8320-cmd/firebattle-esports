@@ -56,6 +56,7 @@ service cloud.firestore {
              data.gameUid is string && data.gameUid.size() >= 3 && data.gameUid.size() <= 30 &&
              data.phone is string && data.phone.matches('^[0-9]{10}$') &&
              data.wallet is int && data.wallet >= 0 && data.wallet <= 10000000 &&
+             (!('winningBalance' in data) || (data.winningBalance is int && data.winningBalance >= 0 && data.winningBalance <= data.wallet)) &&
              (!('referralCode' in data) || data.referralCode == '' || isValidReferralCode(data.referralCode)) &&
              (!('referredByUid' in data) || (data.referredByUid is string && data.referredByUid.size() <= 128)) &&
              (!('referredByCode' in data) || data.referredByCode == '' || isValidReferralCode(data.referredByCode)) &&
@@ -160,12 +161,13 @@ service cloud.firestore {
                        request.auth.uid == userId &&
                        incoming().userId == request.auth.uid &&
                        incoming().wallet == 0 &&
+                       incoming().get('winningBalance', 0) == 0 &&
                        incoming().get('referredByUid', '') == '' &&
                        incoming().get('referredByCode', '') == '' &&
                        incoming().get('referralCount', 0) == 0 &&
                        incoming().get('referralEarnings', 0) == 0 &&
                        incoming().keys().hasAll(['userId', 'email', 'ign', 'gameUid', 'phone', 'wallet', 'createdAt', 'updatedAt']) &&
-                       incoming().keys().hasOnly(['userId', 'email', 'ign', 'gameUid', 'phone', 'wallet', 'referralCode', 'referredByUid', 'referredByCode', 'referralCount', 'referralEarnings', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'email', 'ign', 'gameUid', 'phone', 'wallet', 'winningBalance', 'referralCode', 'referredByUid', 'referredByCode', 'referralCount', 'referralEarnings', 'createdAt', 'updatedAt']) &&
                        isValidUserProfile(incoming()) &&
                        (incoming().get('referralCode', '') == '' ||
                         existsAfter(/databases/$(database)/documents/referralCodes/$(incoming().referralCode))) &&
@@ -178,14 +180,17 @@ service cloud.firestore {
                        incoming().createdAt == existing().createdAt &&
                        incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
                        (
-                         (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['wallet', 'ign', 'gameUid', 'phone', 'updatedAt'])) ||
+                         (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['wallet', 'winningBalance', 'ign', 'gameUid', 'phone', 'updatedAt'])) ||
                          (request.auth.uid == userId &&
                           incoming().wallet == existing().wallet &&
                           incoming().diff(existing()).affectedKeys().hasOnly(['ign', 'gameUid', 'phone', 'updatedAt'])) ||
                          (request.auth.uid == userId &&
                           incoming().wallet >= 0 &&
                           incoming().wallet <= existing().wallet &&
-                          incoming().diff(existing()).affectedKeys().hasOnly(['wallet', 'updatedAt'])) ||
+                          incoming().get('winningBalance', 0) >= 0 &&
+                          incoming().get('winningBalance', 0) <= existing().get('winningBalance', 0) &&
+                          incoming().get('winningBalance', 0) <= incoming().wallet &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['wallet', 'winningBalance', 'updatedAt'])) ||
                          (request.auth.uid == userId &&
                           existing().get('referralCode', '') == '' &&
                           isValidReferralCode(incoming().referralCode) &&
@@ -400,7 +405,9 @@ service cloud.firestore {
                            (incoming().get('feeAmount', 0) + 1) * 100 > incoming().amount * get(/databases/$(database)/documents/settings/app).data.get('withdrawalFeePercent', 0)
                          )
                        ) &&
-                       getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.wallet == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.wallet - incoming().amount;
+                       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('winningBalance', 0) >= incoming().amount &&
+                       getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.wallet == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.wallet - incoming().amount &&
+                       getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('winningBalance', 0) == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('winningBalance', 0) - incoming().amount;
       allow update: if isAdmin() &&
                        isValidId(withdrawalId) &&
                        isValidWithdrawal(incoming()) &&

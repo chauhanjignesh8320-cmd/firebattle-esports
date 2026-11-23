@@ -351,8 +351,8 @@ private fun AuthenticatedArenaShell(
                                 onRejectWithdrawal = { wd ->
                                     adminViewModel.rejectAndRefundWithdrawal(wd)
                                 },
-                                onAdjustUserWallet = { target, delta, onSuccess ->
-                                    adminViewModel.adjustUserWallet(target, delta, onSuccess)
+                                onAdjustUserWallet = { target, delta, addAsWinning, onSuccess ->
+                                    adminViewModel.adjustUserWallet(target, delta, addAsWinning, onSuccess)
                                 },
                                 onSaveSettings = { draft ->
                                     adminViewModel.saveSettings(draft)

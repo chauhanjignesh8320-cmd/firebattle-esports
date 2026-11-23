@@ -149,14 +149,12 @@ fun PlayerWalletSection(
         }
     }
 
-    val balanceBreakdown = remember(profile.wallet, profile.referralEarnings, deposits, registrations, withdrawals) {
-        val grossWinnings = registrations.sumOf { it.prizeWon }
-        val nonRejectedWithdrawals = withdrawals.filter { it.status != "Rejected" }.sumOf { it.amount }
-        val winningBal = (grossWinnings - nonRejectedWithdrawals).coerceIn(0L, profile.wallet)
-        val afterWinning = (profile.wallet - winningBal).coerceAtLeast(0L)
+    val balanceBreakdown = remember(profile.wallet, profile.winningBalance, profile.referralEarnings, deposits) {
+        val winningBal = profile.winningBalance.coerceIn(0L, profile.wallet)
+        val nonWinning = (profile.wallet - winningBal).coerceAtLeast(0L)
         val depositBonusEarned = deposits.filter { it.status == "Approved" }.sumOf { it.bonusAmount }
-        val bonusBal = (profile.referralEarnings + depositBonusEarned).coerceIn(0L, afterWinning)
-        val depositedBal = (afterWinning - bonusBal).coerceAtLeast(0L)
+        val bonusBal = (profile.referralEarnings + depositBonusEarned).coerceIn(0L, nonWinning)
+        val depositedBal = (nonWinning - bonusBal).coerceAtLeast(0L)
         Triple(depositedBal, winningBal, bonusBal)
     }
     val (depositedBalance, winningBalance, bonusBalance) = balanceBreakdown
@@ -1111,15 +1109,31 @@ private fun WithdrawRealUpiPanel(
             }
 
             Text(
-                text = "Min Withdrawal: ₹$minWithdrawal • Platform Fee: $feePercent%",
+                text = "Min Withdrawal: ₹$minWithdrawal • Fee: $feePercent% • Only Winning Balance (₹$winningBalance) is withdrawable",
                 style = MaterialTheme.typography.labelSmall,
                 color = ArenaInkMuted
             )
 
+            if (winningBalance < minWithdrawal) {
+                Surface(
+                    color = BlazeOrange.copy(alpha = 0.1f),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Added/Bonus money cannot be withdrawn directly. Play & win matches to move money into Winning (₹$winningBalance / ₹$minWithdrawal min)!",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = BlazeOrange,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                    )
+                }
+            }
+
             OutlinedTextField(
                 value = wdAmount,
                 onValueChange = { wdAmount = it.filter { ch -> ch.isDigit() } },
-                label = { Text("Withdraw Amount (Min ₹$minWithdrawal)") },
+                label = { Text("Withdraw Amount (Max Winning: ₹$winningBalance)") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
                 colors = lightFieldColors,
@@ -1154,7 +1168,14 @@ private fun WithdrawRealUpiPanel(
                             Text("You Receive via UPI", style = MaterialTheme.typography.labelLarge, color = ArenaInkDark)
                             Text("₹$calcNet", style = MaterialTheme.typography.labelLarge, color = EmeraldWin, fontWeight = FontWeight.ExtraBold)
                         }
-                        if (enteredWdAmount < minWithdrawal) {
+                        if (enteredWdAmount > winningBalance) {
+                            Text(
+                                text = "Exceeds Winning Balance (₹$winningBalance). Deposited & Bonus money must be played in matches first.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = BlazeOrange,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        } else if (enteredWdAmount < minWithdrawal) {
                             Text(
                                 text = "Minimum withdrawal is ₹$minWithdrawal.",
                                 style = MaterialTheme.typography.labelSmall,

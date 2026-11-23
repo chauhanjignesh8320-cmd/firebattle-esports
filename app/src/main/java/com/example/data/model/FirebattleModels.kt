@@ -129,6 +129,7 @@ data class UserProfile(
     val gameUid: String = "",
     val phone: String = "",
     val wallet: Long = 0L,
+    val winningBalance: Long = 0L,
     val referralCode: String = "",
     val referredByUid: String = "",
     val referredByCode: String = "",

@@ -352,6 +352,7 @@ class FirebattleRepository(
                                 "gameUid" to cleanGameUid,
                                 "phone" to cleanPhone,
                                 "wallet" to 0L,
+                                "winningBalance" to 0L,
                                 "referralCode" to candidateCode,
                                 "referredByUid" to "",
                                 "referredByCode" to "",
@@ -613,10 +614,14 @@ class FirebattleRepository(
                     )
                 )
                 if (entry > 0L) {
+                    val currentWinning = (userSnap.getLong("winningBalance") ?: 0L).coerceIn(0L, currentWallet)
+                    val newWallet = currentWallet - entry
+                    val newWinning = minOf(currentWinning, newWallet)
                     tx.update(
                         userRef,
                         mapOf(
-                            "wallet" to (currentWallet - entry),
+                            "wallet" to newWallet,
+                            "winningBalance" to newWinning,
                             "updatedAt" to FieldValue.serverTimestamp()
                         )
                     )
@@ -697,6 +702,12 @@ class FirebattleRepository(
                 }
 
                 val currentWallet = userSnap.getLong("wallet") ?: 0L
+                val currentWinning = (userSnap.getLong("winningBalance") ?: 0L).coerceIn(0L, currentWallet)
+                if (amount > currentWinning) {
+                    throw IllegalStateException(
+                        "Only Winning balance can be withdrawn (Withdrawable Winning: ₹$currentWinning). Play & win matches to unlock withdrawals!"
+                    )
+                }
                 if (currentWallet < amount) {
                     throw IllegalStateException("Insufficient wallet balance (₹$currentWallet).")
                 }
@@ -711,6 +722,7 @@ class FirebattleRepository(
                     userRef,
                     mapOf(
                         "wallet" to (currentWallet - amount),
+                        "winningBalance" to (currentWinning - amount),
                         "updatedAt" to FieldValue.serverTimestamp()
                     )
                 )
@@ -966,6 +978,9 @@ class FirebattleRepository(
                 }.take(160)
 
                 val nextStatus = if (markMatchCompleted) MatchStatus.COMPLETED.wireValue else existingStatus
+                val currentWinning = (userSnap.getLong("winningBalance") ?: 0L).coerceIn(0L, currentWallet)
+                val updatedWallet = (currentWallet + prizeAmount).coerceAtMost(10_000_000L)
+                val updatedWinning = (currentWinning + prizeAmount).coerceAtMost(updatedWallet)
 
                 tx.update(
                     regRef,
@@ -980,7 +995,8 @@ class FirebattleRepository(
                 tx.update(
                     userRef,
                     mapOf(
-                        "wallet" to (currentWallet + prizeAmount).coerceAtMost(10_000_000L),
+                        "wallet" to updatedWallet,
+                        "winningBalance" to updatedWinning,
                         "updatedAt" to FieldValue.serverTimestamp()
                     )
                 )
@@ -1119,6 +1135,9 @@ class FirebattleRepository(
                 if (wdSnap.getString("status") != "Pending") throw IllegalStateException("Withdrawal already processed.")
                 val amount = wdSnap.getLong("amount") ?: 0L
                 val currentWallet = userSnap.getLong("wallet") ?: 0L
+                val currentWinning = (userSnap.getLong("winningBalance") ?: 0L).coerceIn(0L, currentWallet)
+                val updatedWallet = (currentWallet + amount).coerceAtMost(10_000_000L)
+                val updatedWinning = (currentWinning + amount).coerceAtMost(updatedWallet)
 
                 tx.update(
                     wdRef,
@@ -1130,7 +1149,8 @@ class FirebattleRepository(
                 tx.update(
                     userRef,
                     mapOf(
-                        "wallet" to (currentWallet + amount),
+                        "wallet" to updatedWallet,
+                        "winningBalance" to updatedWinning,
                         "updatedAt" to FieldValue.serverTimestamp()
                     )
                 )
@@ -1144,7 +1164,11 @@ class FirebattleRepository(
         }
     }
 
-    suspend fun adjustUserWalletAtomic(targetUserId: String, delta: Long): Result<Unit> {
+    suspend fun adjustUserWalletAtomic(
+        targetUserId: String,
+        delta: Long,
+        addAsWinning: Boolean = false
+    ): Result<Unit> {
         val path = "users/$targetUserId"
         return try {
             requireUserId()
@@ -1156,11 +1180,17 @@ class FirebattleRepository(
                 val userSnap = tx.get(userRef)
                 if (!userSnap.exists()) throw IllegalStateException("Player profile not found.")
                 val current = userSnap.getLong("wallet") ?: 0L
+                val currentWinning = (userSnap.getLong("winningBalance") ?: 0L).coerceIn(0L, current)
                 val updated = max(0L, current + delta).coerceAtMost(10_000_000L)
+                val updatedWinning = when {
+                    delta > 0L && addAsWinning -> (currentWinning + delta).coerceAtMost(updated)
+                    else -> currentWinning.coerceAtMost(updated)
+                }
                 tx.update(
                     userRef,
                     mapOf(
                         "wallet" to updated,
+                        "winningBalance" to updatedWinning,
                         "updatedAt" to FieldValue.serverTimestamp()
                     )
                 )

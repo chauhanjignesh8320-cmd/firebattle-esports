@@ -233,14 +233,19 @@ class AdminViewModel(
         }
     }
 
-    fun adjustUserWallet(user: UserProfile, deltaText: String, onSuccess: () -> Unit) {
+    fun adjustUserWallet(
+        user: UserProfile,
+        deltaText: String,
+        addAsWinning: Boolean = false,
+        onSuccess: () -> Unit
+    ) {
         val delta = deltaText.trim().toLongOrNull()
         if (delta == null || delta == 0L) {
             _events.tryEmit("Enter a valid non-zero amount (e.g. 50 or -50).")
             return
         }
         runAction("Updated ${user.ign}'s wallet!") {
-            repository.adjustUserWalletAtomic(user.userId, delta).also {
+            repository.adjustUserWalletAtomic(user.userId, delta, addAsWinning).also {
                 if (it.isSuccess) onSuccess()
             }
         }

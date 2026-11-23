@@ -109,7 +109,11 @@
         },
         "wallet": {
           "type": "integer",
-          "description": "Wallet balance in INR."
+          "description": "Total wallet balance in INR."
+        },
+        "winningBalance": {
+          "type": "integer",
+          "description": "Withdrawable match winnings balance in INR (always <= wallet)."
         },
         "referralCode": {
           "type": "string",
