@@ -30,7 +30,7 @@
     <string name="room_locked_hint">Room ID &amp; Password appear here after you join this match.</string>
     <string name="add_money_title">Add Money (UPI Deposit)</string>
     <string name="withdraw_title">Withdraw Winnings</string>
-    <string name="submit_deposit">Submit Deposit Request</string>
+    <string name="submit_deposit">I Have Paid — Send Request to Admin</string>
     <string name="request_withdrawal">Request Withdrawal</string>
     <string name="publish_match">PUBLISH MATCH LIVE</string>
     <string name="save_settings">SAVE SETTINGS TO FIRESTORE</string>
@@ -44,7 +44,7 @@
     <string name="refer_apply_button">Apply Referral Code</string>
     <string name="refer_friends_joined">Invited Friends</string>
     <string name="upi_qr_scan_title">Scan &amp; Pay via UPI QR</string>
-    <string name="upi_qr_scan_hint">Scan using Google Pay, PhonePe, Paytm, or BHIM, then submit your 12-digit UTR below.</string>
+    <string name="upi_qr_scan_hint">Tap Pay via UPI App (auto-sends request after payment) or scan QR &amp; tap I Have Paid below.</string>
     <string name="open_upi_app">Pay via UPI App</string>
     <string name="admin_qr_preview_title">Your Live Payment QR Code</string>
     <string name="admin_revenue_title">Owner Earnings &amp; Cashflow</string>

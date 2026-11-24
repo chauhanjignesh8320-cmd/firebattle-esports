@@ -764,6 +764,9 @@ private fun AddMoneyRealUpiPanel(
     val clipboard = LocalClipboardManager.current
     var depAmount by rememberSaveable { mutableStateOf("100") }
     var depUtr by rememberSaveable { mutableStateOf("") }
+    var awaitingUpiConfirmAmount by rememberSaveable { mutableStateOf(0L) }
+    var awaitingUpiConfirmRef by rememberSaveable { mutableStateOf("") }
+    var lastSubmittedSummary by rememberSaveable { mutableStateOf("") }
 
     val lightFieldColors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = EmeraldWin,
@@ -792,6 +795,25 @@ private fun AddMoneyRealUpiPanel(
                 color = ArenaInkDark,
                 fontWeight = FontWeight.Bold
             )
+
+            if (lastSubmittedSummary.isNotBlank()) {
+                Surface(
+                    color = EmeraldWin.copy(alpha = 0.14f),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, EmeraldWin.copy(alpha = 0.65f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("deposit_request_sent_banner")
+                ) {
+                    Text(
+                        text = "✅ $lastSubmittedSummary Admin will verify in UPI & credit your wallet shortly.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = ArenaInkDark,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+            }
 
             if (settings.hasActiveDepositOffer) {
                 val offerHeadline = settings.depositOfferLabel.trim().ifBlank {
@@ -986,14 +1008,86 @@ private fun AddMoneyRealUpiPanel(
                 isLightSurface = true,
                 onUpiRefCaptured = { capturedRef ->
                     depUtr = capturedRef
+                },
+                onAutoSubmitUpiDeposit = { paidAmount, capturedRef ->
+                    awaitingUpiConfirmAmount = 0L
+                    awaitingUpiConfirmRef = ""
+                    onSubmitDeposit(paidAmount.toString(), capturedRef) {
+                        lastSubmittedSummary = "₹$paidAmount request sent to Admin automatically (Ref: $capturedRef)."
+                        depUtr = ""
+                    }
+                },
+                onReturnedFromUpiApp = { paidAmount, capturedRef, explicitFailure ->
+                    if (!explicitFailure && paidAmount > 0L) {
+                        awaitingUpiConfirmAmount = paidAmount
+                        awaitingUpiConfirmRef = capturedRef
+                    } else {
+                        awaitingUpiConfirmAmount = 0L
+                        awaitingUpiConfirmRef = ""
+                    }
                 }
             )
+
+            if (awaitingUpiConfirmAmount > 0L) {
+                Surface(
+                    color = EmeraldWin.copy(alpha = 0.14f),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.5.dp, EmeraldWin),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("upi_return_confirm_card")
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "Did ₹$awaitingUpiConfirmAmount get deducted in your UPI app?",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = ArenaInkDark,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "No need to type UTR — tap below to notify Admin immediately.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = ArenaInkMuted
+                        )
+                        Button(
+                            onClick = {
+                                val amt = awaitingUpiConfirmAmount
+                                val ref = depUtr.trim().ifBlank { awaitingUpiConfirmRef }
+                                onSubmitDeposit(amt.toString(), ref) {
+                                    lastSubmittedSummary = "₹$amt request sent to Admin (Ref: $ref)."
+                                    awaitingUpiConfirmAmount = 0L
+                                    awaitingUpiConfirmRef = ""
+                                    depUtr = ""
+                                }
+                            },
+                            enabled = !isBusy,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = EmeraldWin,
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .testTag("confirm_upi_deducted_button")
+                        ) {
+                            Text(
+                                text = "Yes, ₹$awaitingUpiConfirmAmount Paid — Send to Admin",
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
 
             OutlinedTextField(
                 value = depUtr,
                 onValueChange = { depUtr = it.take(32) },
-                label = { Text("12-digit UTR / UPI Ref Number") },
-                placeholder = { Text("Enter UTR after UPI payment", color = ArenaInkMuted) },
+                label = { Text("UTR / UPI Ref Number (Optional)") },
+                placeholder = { Text("Auto-filled or leave blank after paying", color = ArenaInkMuted) },
                 singleLine = true,
                 colors = lightFieldColors,
                 shape = RoundedCornerShape(14.dp),
@@ -1004,7 +1098,12 @@ private fun AddMoneyRealUpiPanel(
 
             Button(
                 onClick = {
-                    onSubmitDeposit(depAmount, depUtr) {
+                    val submittedAmount = depAmount.trim()
+                    val submittedUtr = depUtr.trim()
+                    onSubmitDeposit(submittedAmount, submittedUtr) {
+                        lastSubmittedSummary = "₹$submittedAmount deposit request sent to Admin."
+                        awaitingUpiConfirmAmount = 0L
+                        awaitingUpiConfirmRef = ""
                         depAmount = ""
                         depUtr = ""
                     }

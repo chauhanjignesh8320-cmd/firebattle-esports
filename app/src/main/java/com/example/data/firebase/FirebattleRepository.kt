@@ -640,13 +640,21 @@ class FirebattleRepository(
     }
 
     suspend fun submitDepositRequest(profile: UserProfile, amount: Long, utr: String): Result<Unit> {
-        val cleanUtr = utr.trim()
+        val rawUtr = utr.trim().take(32)
+        val cleanUtr = when {
+            rawUtr.isEmpty() -> {
+                val timePart = System.currentTimeMillis().toString(36).uppercase().takeLast(7)
+                val randPart = (100..999).random().toString()
+                "UPI$timePart$randPart"
+            }
+            rawUtr.length < 6 -> "REF-$rawUtr".padEnd(6, '0')
+            else -> rawUtr
+        }
         var path = "deposits"
         return try {
             val uid = requireUserId()
             check(uid == profile.userId) { "Signed-in user changed; refusing deposit request." }
             require(amount in 1L..100_000L) { "Amount must be between ₹1 and ₹1,00,000." }
-            require(cleanUtr.length in 6..32) { "Enter a valid 6 to 32 character UTR / reference number." }
 
             val docRef = db.collection("deposits").document()
             path = docRef.path

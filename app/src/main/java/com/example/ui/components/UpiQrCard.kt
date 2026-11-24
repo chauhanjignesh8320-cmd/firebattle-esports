@@ -30,7 +30,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -64,13 +66,25 @@ import com.google.zxing.qrcode.QRCodeWriter
 
 data class UpiIntentOutcome(
     val isSuccess: Boolean,
+    val isExplicitFailure: Boolean,
     val referenceId: String,
     val statusLabel: String
 )
 
+fun generateUpiTxnRef(): String {
+    val timePart = System.currentTimeMillis().toString(36).uppercase().takeLast(7)
+    val randPart = (100..999).random().toString()
+    return "FB$timePart$randPart"
+}
+
 fun parseUpiIntentResponse(rawResponse: String?): UpiIntentOutcome {
     if (rawResponse.isNullOrBlank()) {
-        return UpiIntentOutcome(isSuccess = false, referenceId = "", statusLabel = "CANCELLED")
+        return UpiIntentOutcome(
+            isSuccess = false,
+            isExplicitFailure = false,
+            referenceId = "",
+            statusLabel = "UNKNOWN"
+        )
     }
     val params = rawResponse.split("&")
         .mapNotNull { part ->
@@ -83,14 +97,17 @@ fun parseUpiIntentResponse(rawResponse: String?): UpiIntentOutcome {
         }
         .toMap()
     val status = (params["status"] ?: "").uppercase()
+    val responseCode = (params["responsecode"] ?: "").trim()
     val refId = (params["approvalrefno"] ?: params["txnref"] ?: params["txnid"] ?: "")
         .filter { it.isLetterOrDigit() }
         .take(32)
-    val success = status == "SUCCESS" || status == "SUBMITTED"
+    val success = status == "SUCCESS" || status == "SUBMITTED" || responseCode == "00"
+    val explicitFailure = status == "FAILURE" || status == "FAILED" || status == "CANCELLED" || status == "DECLINED"
     return UpiIntentOutcome(
         isSuccess = success,
+        isExplicitFailure = explicitFailure,
         referenceId = refId,
-        statusLabel = status.ifBlank { "UNKNOWN" }
+        statusLabel = status.ifBlank { if (responseCode == "00") "SUCCESS" else "UNKNOWN" }
     )
 }
 
@@ -98,7 +115,8 @@ fun buildUpiPaymentUri(
     upiId: String,
     upiName: String,
     amount: Long? = null,
-    transactionNote: String = "Firebattle Wallet Deposit"
+    transactionNote: String = "Firebattle Wallet Deposit",
+    transactionRef: String = ""
 ): String {
     val builder = Uri.Builder()
         .scheme("upi")
@@ -108,6 +126,9 @@ fun buildUpiPaymentUri(
         .appendQueryParameter("cu", "INR")
     if (amount != null && amount > 0L) {
         builder.appendQueryParameter("am", "$amount.00")
+    }
+    if (transactionRef.isNotBlank()) {
+        builder.appendQueryParameter("tr", transactionRef.trim())
     }
     builder.appendQueryParameter("tn", transactionNote)
     return builder.build().toString()
@@ -142,11 +163,15 @@ fun UpiQrPaymentCard(
     onFeedback: (String) -> Unit,
     modifier: Modifier = Modifier,
     isLightSurface: Boolean = false,
-    onUpiRefCaptured: (String) -> Unit = {}
+    onUpiRefCaptured: (String) -> Unit = {},
+    onAutoSubmitUpiDeposit: ((Long, String) -> Unit)? = null,
+    onReturnedFromUpiApp: ((Long, String, Boolean) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val cleanUpi = upiId.trim()
     val hasValidUpi = cleanUpi.length >= 3 && cleanUpi.contains("@")
+    val pendingRefState = rememberSaveable { mutableStateOf("") }
+    val pendingAmountState = rememberSaveable { mutableStateOf(0L) }
     val upiUri = remember(cleanUpi, upiName, amount) {
         if (hasValidUpi) buildUpiPaymentUri(cleanUpi, upiName, amount) else ""
     }
@@ -159,21 +184,26 @@ fun UpiQrPaymentCard(
     ) { result ->
         val raw = result.data?.getStringExtra("response")
         val outcome = parseUpiIntentResponse(raw)
+        val launchedAmount = pendingAmountState.value.takeIf { it > 0L } ?: (amount ?: 0L)
+        val resolvedRef = outcome.referenceId.takeIf { it.length >= 6 }
+            ?: pendingRefState.value.takeIf { it.length >= 6 }
+            ?: generateUpiTxnRef()
+
         when {
-            result.resultCode == Activity.RESULT_OK && outcome.isSuccess -> {
-                if (outcome.referenceId.length >= 6) {
-                    onUpiRefCaptured(outcome.referenceId)
-                    onFeedback("UPI payment completed! Ref ${outcome.referenceId} captured below — tap Submit.")
-                } else {
-                    onFeedback("UPI payment ${outcome.statusLabel}! Enter your 12-digit UTR below & tap Submit.")
-                }
+            (outcome.isSuccess || (result.resultCode == Activity.RESULT_OK && !outcome.isExplicitFailure)) &&
+                launchedAmount > 0L &&
+                onAutoSubmitUpiDeposit != null -> {
+                onUpiRefCaptured(resolvedRef)
+                onAutoSubmitUpiDeposit(launchedAmount, resolvedRef)
             }
-            outcome.referenceId.length >= 6 -> {
-                onUpiRefCaptured(outcome.referenceId)
-                onFeedback("Captured Ref ${outcome.referenceId}. Verify status & tap Submit below.")
+            outcome.isExplicitFailure -> {
+                onReturnedFromUpiApp?.invoke(launchedAmount, "", true)
+                onFeedback("UPI payment ${outcome.statusLabel.lowercase()}. Request was not sent.")
             }
             else -> {
-                onFeedback("Returned from UPI app. If payment succeeded, enter your 12-digit UTR & tap Submit.")
+                onUpiRefCaptured(resolvedRef)
+                onReturnedFromUpiApp?.invoke(launchedAmount, resolvedRef, false)
+                onFeedback("Returned from UPI app — tap 'Yes, Paid' below if ₹$launchedAmount was deducted!")
             }
         }
     }
@@ -261,7 +291,16 @@ fun UpiQrPaymentCard(
                             onFeedback("Select a quick pack or enter Amount (₹) first before opening UPI app.")
                             return@Button
                         }
-                        val payIntent = Intent(Intent.ACTION_VIEW, Uri.parse(upiUri))
+                        val txnRef = generateUpiTxnRef()
+                        pendingRefState.value = txnRef
+                        pendingAmountState.value = amount
+                        val payUri = buildUpiPaymentUri(
+                            upiId = cleanUpi,
+                            upiName = upiName,
+                            amount = amount,
+                            transactionRef = txnRef
+                        )
+                        val payIntent = Intent(Intent.ACTION_VIEW, Uri.parse(payUri))
                         try {
                             upiLauncher.launch(Intent.createChooser(payIntent, "Pay ₹$amount via UPI App"))
                         } catch (_: ActivityNotFoundException) {

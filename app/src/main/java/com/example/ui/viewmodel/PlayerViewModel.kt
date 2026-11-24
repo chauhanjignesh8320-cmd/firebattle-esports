@@ -159,7 +159,7 @@ class PlayerViewModel(
             _events.tryEmit("Enter a valid deposit amount.")
             return
         }
-        runAction("Deposit request submitted for admin approval.") {
+        runAction("₹$amount deposit request sent to Admin! Wallet updates once verified.") {
             repository.submitDepositRequest(profile, amount, utr).also {
                 if (it.isSuccess) onSuccess()
             }
