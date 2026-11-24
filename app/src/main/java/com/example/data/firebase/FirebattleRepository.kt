@@ -6,6 +6,7 @@ import com.example.data.model.AppSettings
 import com.example.data.model.DEFAULT_APP_DOWNLOAD_URL
 import com.example.data.model.LEGACY_APK_DOWNLOAD_URL
 import com.example.data.model.LEGACY_GITHUB_PAGES_URL
+import com.example.data.model.LEGACY_VERCEL_URL
 import com.example.data.model.DepositRequest
 import com.example.data.model.MatchRegistration
 import com.example.data.model.MatchStatus
@@ -111,7 +112,8 @@ class FirebattleRepository(
                     val trimmedUrl = parsed.appDownloadUrl.trim()
                     val isLegacyUrl = trimmedUrl.isBlank() ||
                         trimmedUrl.equals(LEGACY_APK_DOWNLOAD_URL, ignoreCase = true) ||
-                        trimmedUrl.trimEnd('/').equals(LEGACY_GITHUB_PAGES_URL.trimEnd('/'), ignoreCase = true)
+                        trimmedUrl.trimEnd('/').equals(LEGACY_GITHUB_PAGES_URL.trimEnd('/'), ignoreCase = true) ||
+                        trimmedUrl.trimEnd('/').equals(LEGACY_VERCEL_URL.trimEnd('/'), ignoreCase = true)
                     val resolvedUrl = if (isLegacyUrl) DEFAULT_APP_DOWNLOAD_URL else trimmedUrl
                     val resolvedFee = if (snapshot.exists() && !snapshot.contains("withdrawalFeePercent")) {
                         0L

@@ -76,6 +76,19 @@
                     android:scheme="https"
                     android:host="firebattle-esports-k62s.vercel.app" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:scheme="https"
+                    android:host="firebetal.com" />
+                <data
+                    android:scheme="https"
+                    android:host="www.firebetal.com" />
+            </intent-filter>
         </activity>
     </application>
 

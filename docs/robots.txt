@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://firebattle-esports-k62s.vercel.app/sitemap.xml
+Sitemap: https://firebetal.com/sitemap.xml

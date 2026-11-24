@@ -86,9 +86,11 @@ class MainActivity : ComponentActivity() {
         val isGitHubInviteLink = uri.scheme.equals("https", ignoreCase = true) &&
             uri.host.equals("chauhanjignesh8320-cmd.github.io", ignoreCase = true) &&
             (uri.path ?: "").startsWith("/firebattle-esports")
-        val isVercelInviteLink = uri.scheme.equals("https", ignoreCase = true) &&
-            uri.host.equals("firebattle-esports-k62s.vercel.app", ignoreCase = true)
-        if (!isCustomScheme && !isGitHubInviteLink && !isVercelInviteLink) {
+        val isVercelOrCustomInviteLink = uri.scheme.equals("https", ignoreCase = true) &&
+            (uri.host.equals("firebattle-esports-k62s.vercel.app", ignoreCase = true) ||
+                uri.host.equals("firebetal.com", ignoreCase = true) ||
+                uri.host.equals("www.firebetal.com", ignoreCase = true))
+        if (!isCustomScheme && !isGitHubInviteLink && !isVercelOrCustomInviteLink) {
             return ""
         }
         val queryCode = uri.getQueryParameter("code") ?: uri.getQueryParameter("ref")

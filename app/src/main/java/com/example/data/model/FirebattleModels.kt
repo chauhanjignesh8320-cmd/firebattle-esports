@@ -82,8 +82,11 @@ const val LEGACY_APK_DOWNLOAD_URL =
 const val LEGACY_GITHUB_PAGES_URL =
     "https://chauhanjignesh8320-cmd.github.io/firebattle-esports/"
 
-const val DEFAULT_APP_DOWNLOAD_URL =
+const val LEGACY_VERCEL_URL =
     "https://firebattle-esports-k62s.vercel.app/"
+
+const val DEFAULT_APP_DOWNLOAD_URL =
+    "https://firebetal.com/"
 
 fun buildReferralInviteLink(downloadUrl: String, referralCode: String): String {
     val cleanUrl = downloadUrl.trim().ifBlank { DEFAULT_APP_DOWNLOAD_URL }
