@@ -66,6 +66,16 @@
                     android:host="chauhanjignesh8320-cmd.github.io"
                     android:pathPrefix="/firebattle-esports" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:scheme="https"
+                    android:host="firebattle-esports-k62s.vercel.app" />
+            </intent-filter>
         </activity>
     </application>
 

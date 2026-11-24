@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://chauhanjignesh8320-cmd.github.io/firebattle-esports/sitemap.xml
+Sitemap: https://firebattle-esports-k62s.vercel.app/sitemap.xml

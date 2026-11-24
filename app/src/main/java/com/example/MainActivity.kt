@@ -83,13 +83,21 @@ class MainActivity : ComponentActivity() {
         val uri = intent?.data ?: return ""
         val isCustomScheme = uri.scheme.equals("firebattle", ignoreCase = true) &&
             uri.host.equals("refer", ignoreCase = true)
-        val isWebInviteLink = uri.scheme.equals("https", ignoreCase = true) &&
+        val isGitHubInviteLink = uri.scheme.equals("https", ignoreCase = true) &&
             uri.host.equals("chauhanjignesh8320-cmd.github.io", ignoreCase = true) &&
             (uri.path ?: "").startsWith("/firebattle-esports")
-        if (!isCustomScheme && !isWebInviteLink) {
+        val isVercelInviteLink = uri.scheme.equals("https", ignoreCase = true) &&
+            uri.host.equals("firebattle-esports-k62s.vercel.app", ignoreCase = true)
+        if (!isCustomScheme && !isGitHubInviteLink && !isVercelInviteLink) {
             return ""
         }
-        val raw = uri.getQueryParameter("code") ?: uri.getQueryParameter("ref") ?: ""
+        val queryCode = uri.getQueryParameter("code") ?: uri.getQueryParameter("ref")
+        val pathCode = (uri.path ?: "")
+            .trim('/')
+            .split('/')
+            .takeIf { it.size >= 2 && it[0].equals("refer", ignoreCase = true) }
+            ?.getOrNull(1)
+        val raw = queryCode ?: pathCode ?: ""
         return raw.trim().uppercase().filter { it.isLetterOrDigit() }.take(16)
     }
 }
