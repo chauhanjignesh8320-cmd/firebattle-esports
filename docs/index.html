@@ -501,11 +501,12 @@
           <a class="btn-primary" href="https://github.com/chauhanjignesh8320-cmd/firebattle-esports/releases/latest/download/Firebattle.apk">
             ⬇ Download Firebattle APK (Android)
           </a>
-          <a class="btn-secondary" href="#how-to-install">How to Install</a>
+          <button type="button" class="btn-secondary" onclick="shareSite()">Share Download Link</button>
         </div>
 
         <div class="trust-row">
           <span><strong>✓</strong> 100% Real INR (₹) UPI</span>
+          <span><strong>✓</strong> Deposit Bonus Offers</span>
           <span><strong>✓</strong> Instant Room ID &amp; Pass</span>
           <span><strong>✓</strong> Google Sign-In Secured</span>
         </div>
@@ -528,8 +529,8 @@
               <span>Winning</span>
             </div>
             <div class="mini-stat">
-              <strong>Refer</strong>
-              <span>Bonus</span>
+              <strong>Offer</strong>
+              <span>Bonus %</span>
             </div>
           </div>
         </div>
@@ -553,13 +554,13 @@
         </article>
         <article class="card">
           <div class="feature-icon">₹</div>
-          <h3>Real UPI Deposits &amp; Payouts</h3>
-          <p>Add money directly with GPay, PhonePe, Paytm, or BHIM QR and withdraw match winnings straight to your UPI ID.</p>
+          <h3>Real UPI Deposits &amp; Winning Payouts</h3>
+          <p>Add money via GPay, PhonePe, Paytm, or BHIM QR with extra Deposit Offer Bonus %, play matches, and withdraw match winnings straight to your UPI ID.</p>
         </article>
         <article class="card">
           <div class="feature-icon">🔑</div>
-          <h3>Live Room ID &amp; Notifications</h3>
-          <p>Room ID &amp; Password unlock instantly inside your joined match card with room-ready alerts so you never miss a match.</p>
+          <h3>Live Room ID &amp; Alerts</h3>
+          <p>Room ID &amp; Password unlock inside your joined match card with instant room-ready alerts so you never miss a match.</p>
         </article>
       </div>
     </section>
@@ -574,18 +575,18 @@
         </div>
         <div class="card">
           <span class="step-num">STEP 2</span>
-          <h3>Install App</h3>
-          <p>Open the downloaded <code>Firebattle.apk</code> and allow "Install unknown apps" for your browser.</p>
+          <h3>Install Safely</h3>
+          <p>Open <code>Firebattle.apk</code>, allow "Install unknown apps" for Chrome, and if Play Protect asks, tap <strong>More details → Install anyway</strong>.</p>
         </div>
         <div class="card">
           <span class="step-num">STEP 3</span>
           <h3>Google Sign-In</h3>
-          <p>Sign in with your Google account and enter your In-Game Name (IGN), Game UID &amp; Mobile number.</p>
+          <p>Sign in with your Google account and set your In-Game Name (IGN), Game UID &amp; Mobile number.</p>
         </div>
         <div class="card">
           <span class="step-num">STEP 4</span>
           <h3>Join &amp; Win ₹</h3>
-          <p>Join any Custom, Clash Squad, or Lone Wolf slot, get your Room ID, play &amp; withdraw winnings via UPI.</p>
+          <p>Join any Custom, Clash Squad, or Lone Wolf slot, get your Room ID, win prizes &amp; withdraw via UPI.</p>
         </div>
       </div>
     </section>
@@ -598,8 +599,12 @@
           <p>Yes, downloading the Firebattle Android APK is completely free. Both free-entry and paid-entry tournaments are hosted daily.</p>
         </div>
         <div class="faq-item">
-          <h4>How do I add money or withdraw winnings?</h4>
-          <p>Open the <strong>My Wallet</strong> screen inside the app, choose <strong>Add Money</strong> to pay via GPay/PhonePe/Paytm/UPI QR, or tap <strong>Withdraw</strong> to request a payout to your UPI ID.</p>
+          <h4>How do Add Money Offers &amp; Winning Withdrawals work?</h4>
+          <p>Open <strong>My Wallet</strong> to add funds via GPay/PhonePe/Paytm/UPI QR and earn active Deposit Bonus %. Use your wallet to join matches, and withdraw your <strong>Winning Balance</strong> anytime to your UPI ID.</p>
+        </div>
+        <div class="faq-item">
+          <h4>Why does Android show a Play Protect / Unknown App popup?</h4>
+          <p>Because Firebattle is distributed directly outside Google Play Store, Android shows a standard sideload warning. Simply tap <strong>More details → Install anyway</strong> to finish installing.</p>
         </div>
         <div class="faq-item">
           <h4>Where can I get organizer support?</h4>
@@ -622,7 +627,7 @@
     </div>
   </footer>
 
-  <div id="toast" class="toast">Referral code copied!</div>
+  <div id="toast" class="toast">Link copied!</div>
 
   <script>
     (function () {
@@ -636,15 +641,37 @@
       }
     })();
 
+    function showToast(msg) {
+      var toast = document.getElementById("toast");
+      toast.textContent = msg;
+      toast.style.display = "block";
+      setTimeout(function () { toast.style.display = "none"; }, 2200);
+    }
+
     function copyRefCode() {
       var code = window.__fbRefCode || "";
       if (!code) return;
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(code);
       }
-      var toast = document.getElementById("toast");
-      toast.style.display = "block";
-      setTimeout(function () { toast.style.display = "none"; }, 2200);
+      showToast("Referral code copied!");
+    }
+
+    function shareSite() {
+      var url = window.location.href;
+      var shareData = {
+        title: "Firebattle Esports — Official APK",
+        text: "Download Firebattle Esports APK & play daily Free Fire MAX & BGMI tournaments for real UPI cash!",
+        url: url
+      };
+      if (navigator.share) {
+        navigator.share(shareData).catch(function () {});
+        return;
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url);
+        showToast("Download page link copied!");
+      }
     }
   </script>
 </body>

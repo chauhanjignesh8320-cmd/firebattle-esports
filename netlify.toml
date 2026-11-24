@@ -1,0 +1,27 @@
+[build]
+  publish = "docs"
+  command = ""
+
+[[redirects]]
+  from = "/download"
+  to = "https://github.com/chauhanjignesh8320-cmd/firebattle-esports/releases/latest/download/Firebattle.apk"
+  status = 302
+  force = true
+
+[[redirects]]
+  from = "/apk"
+  to = "https://github.com/chauhanjignesh8320-cmd/firebattle-esports/releases/latest/download/Firebattle.apk"
+  status = 302
+  force = true
+
+[[redirects]]
+  from = "/refer/*"
+  to = "/?ref=:splat"
+  status = 302
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "SAMEORIGIN"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
