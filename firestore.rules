@@ -61,7 +61,8 @@ service cloud.firestore {
              (!('referredByUid' in data) || (data.referredByUid is string && data.referredByUid.size() <= 128)) &&
              (!('referredByCode' in data) || data.referredByCode == '' || isValidReferralCode(data.referredByCode)) &&
              (!('referralCount' in data) || (data.referralCount is int && data.referralCount >= 0 && data.referralCount <= 100000)) &&
-             (!('referralEarnings' in data) || (data.referralEarnings is int && data.referralEarnings >= 0 && data.referralEarnings <= 10000000));
+             (!('referralEarnings' in data) || (data.referralEarnings is int && data.referralEarnings >= 0 && data.referralEarnings <= 10000000)) &&
+             (!('lastLudoRoomId' in data) || isValidId(data.lastLudoRoomId));
     }
 
     function isValidMatch(data) {
@@ -134,6 +135,38 @@ service cloud.firestore {
              data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
              data.deviceModel is string && data.deviceModel.size() >= 1 && data.deviceModel.size() <= 80 &&
              data.appVersion is string && data.appVersion.size() >= 1 && data.appVersion.size() <= 30;
+    }
+
+    function isValidLudoTokens(tokens) {
+      return tokens is list &&
+             tokens.size() == 4 &&
+             tokens[0] is int && tokens[0] >= 0 && tokens[0] <= 57 &&
+             tokens[1] is int && tokens[1] >= 0 && tokens[1] <= 57 &&
+             tokens[2] is int && tokens[2] >= 0 && tokens[2] <= 57 &&
+             tokens[3] is int && tokens[3] >= 0 && tokens[3] <= 57;
+    }
+
+    function isValidLudoRoom(data) {
+      return data.roomCode is string && data.roomCode.size() >= 4 && data.roomCode.size() <= 12 && data.roomCode.matches('^[A-Z0-9]+$') &&
+             data.hostUid is string && data.hostUid.size() >= 1 && data.hostUid.size() <= 128 &&
+             data.hostIgn is string && data.hostIgn.size() >= 2 && data.hostIgn.size() <= 30 &&
+             data.guestUid is string && data.guestUid.size() <= 128 &&
+             data.guestIgn is string && data.guestIgn.size() <= 30 &&
+             data.entry is int && data.entry >= 0 && data.entry <= 10000 &&
+             data.prizePool is int && data.prizePool >= 0 && data.prizePool <= 20000 &&
+             data.prizePool == (data.entry == 0 ? 0 : int((data.entry * 2 * 90) / 100)) &&
+             (data.status == 'WAITING' || data.status == 'PLAYING' || data.status == 'COMPLETED' || data.status == 'CANCELLED') &&
+             data.turnSlot is int && (data.turnSlot == 0 || data.turnSlot == 1) &&
+             data.diceValue is int && data.diceValue >= 0 && data.diceValue <= 6 &&
+             data.awaitingMove is bool &&
+             data.consecutiveSixes is int && data.consecutiveSixes >= 0 && data.consecutiveSixes <= 3 &&
+             isValidLudoTokens(data.hostTokens) &&
+             isValidLudoTokens(data.guestTokens) &&
+             data.lastAction is string && data.lastAction.size() <= 120 &&
+             data.winnerUid is string && data.winnerUid.size() <= 128 &&
+             data.winnerIgn is string && data.winnerIgn.size() <= 30 &&
+             data.forfeitByUid is string && data.forfeitByUid.size() <= 128 &&
+             data.prizePaid is bool;
     }
 
     match /admins/{adminUid} {
@@ -227,7 +260,29 @@ service cloud.firestore {
                           getAfter(/databases/$(database)/documents/referrals/$(request.auth.uid)).data.referrerUid == userId &&
                           incoming().wallet == existing().wallet + getAfter(/databases/$(database)/documents/referrals/$(request.auth.uid)).data.bonusAmount &&
                           incoming().referralCount == existing().get('referralCount', 0) + 1 &&
-                          incoming().referralEarnings == existing().get('referralEarnings', 0) + getAfter(/databases/$(database)/documents/referrals/$(request.auth.uid)).data.bonusAmount)
+                          incoming().referralEarnings == existing().get('referralEarnings', 0) + getAfter(/databases/$(database)/documents/referrals/$(request.auth.uid)).data.bonusAmount) ||
+                         (request.auth.uid == userId &&
+                          'lastLudoRoomId' in incoming() &&
+                          isValidId(incoming().lastLudoRoomId) &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['wallet', 'lastLudoRoomId', 'updatedAt']) &&
+                          get(/databases/$(database)/documents/ludoRooms/$(incoming().lastLudoRoomId)).data.status == 'WAITING' &&
+                          get(/databases/$(database)/documents/ludoRooms/$(incoming().lastLudoRoomId)).data.hostUid == userId &&
+                          get(/databases/$(database)/documents/ludoRooms/$(incoming().lastLudoRoomId)).data.entry > 0 &&
+                          getAfter(/databases/$(database)/documents/ludoRooms/$(incoming().lastLudoRoomId)).data.status == 'CANCELLED' &&
+                          incoming().wallet == existing().wallet + get(/databases/$(database)/documents/ludoRooms/$(incoming().lastLudoRoomId)).data.entry) ||
+                         ('lastLudoRoomId' in incoming() &&
+                          isValidId(incoming().lastLudoRoomId) &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['wallet', 'winningBalance', 'lastLudoRoomId', 'updatedAt']) &&
+                          get(/databases/$(database)/documents/ludoRooms/$(incoming().lastLudoRoomId)).data.status == 'PLAYING' &&
+                          get(/databases/$(database)/documents/ludoRooms/$(incoming().lastLudoRoomId)).data.prizePaid == false &&
+                          get(/databases/$(database)/documents/ludoRooms/$(incoming().lastLudoRoomId)).data.prizePool > 0 &&
+                          (request.auth.uid == get(/databases/$(database)/documents/ludoRooms/$(incoming().lastLudoRoomId)).data.hostUid ||
+                           request.auth.uid == get(/databases/$(database)/documents/ludoRooms/$(incoming().lastLudoRoomId)).data.guestUid) &&
+                          getAfter(/databases/$(database)/documents/ludoRooms/$(incoming().lastLudoRoomId)).data.status == 'COMPLETED' &&
+                          getAfter(/databases/$(database)/documents/ludoRooms/$(incoming().lastLudoRoomId)).data.prizePaid == true &&
+                          getAfter(/databases/$(database)/documents/ludoRooms/$(incoming().lastLudoRoomId)).data.winnerUid == userId &&
+                          incoming().wallet == existing().wallet + get(/databases/$(database)/documents/ludoRooms/$(incoming().lastLudoRoomId)).data.prizePool &&
+                          incoming().winningBalance == existing().get('winningBalance', 0) + get(/databases/$(database)/documents/ludoRooms/$(incoming().lastLudoRoomId)).data.prizePool)
                        );
       allow delete: if false;
     }
@@ -471,6 +526,106 @@ service cloud.firestore {
                        isValidAppInstall(incoming()) &&
                        incoming().lastActiveAt is timestamp && incoming().lastActiveAt <= request.time &&
                        incoming().diff(existing()).affectedKeys().hasOnly(['userId', 'deviceModel', 'appVersion', 'lastActiveAt']);
+      allow delete: if false;
+    }
+
+    match /ludoRooms/{roomId} {
+      allow get: if isSignedIn() && isValidId(roomId) && (
+                    isAdmin() ||
+                    resource == null ||
+                    resource.data.status == 'WAITING' ||
+                    resource.data.hostUid == request.auth.uid ||
+                    resource.data.guestUid == request.auth.uid
+                  );
+      allow list: if isAdmin() || (
+                    isSignedIn() && (
+                      resource.data.status == 'WAITING' ||
+                      resource.data.hostUid == request.auth.uid ||
+                      resource.data.guestUid == request.auth.uid
+                    )
+                  );
+      allow create: if isSignedIn() &&
+                       isValidId(roomId) &&
+                       incoming().hostUid == request.auth.uid &&
+                       incoming().guestUid == '' &&
+                       incoming().guestIgn == '' &&
+                       incoming().status == 'WAITING' &&
+                       incoming().turnSlot == 0 &&
+                       incoming().diceValue == 0 &&
+                       incoming().awaitingMove == false &&
+                       incoming().consecutiveSixes == 0 &&
+                       incoming().hostTokens == [0, 0, 0, 0] &&
+                       incoming().guestTokens == [0, 0, 0, 0] &&
+                       incoming().winnerUid == '' &&
+                       incoming().winnerIgn == '' &&
+                       incoming().forfeitByUid == '' &&
+                       incoming().prizePaid == false &&
+                       incoming().keys().hasAll(['roomCode', 'hostUid', 'hostIgn', 'guestUid', 'guestIgn', 'entry', 'prizePool', 'status', 'turnSlot', 'diceValue', 'awaitingMove', 'consecutiveSixes', 'hostTokens', 'guestTokens', 'lastAction', 'winnerUid', 'winnerIgn', 'forfeitByUid', 'prizePaid', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['roomCode', 'hostUid', 'hostIgn', 'guestUid', 'guestIgn', 'entry', 'prizePool', 'status', 'turnSlot', 'diceValue', 'awaitingMove', 'consecutiveSixes', 'hostTokens', 'guestTokens', 'lastAction', 'winnerUid', 'winnerIgn', 'forfeitByUid', 'prizePaid', 'createdAt', 'updatedAt']) &&
+                       isValidLudoRoom(incoming()) &&
+                       incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       (incoming().entry == 0 ||
+                        getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.wallet == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.wallet - incoming().entry);
+      allow update: if isSignedIn() &&
+                       isValidId(roomId) &&
+                       isValidLudoRoom(incoming()) &&
+                       incoming().roomCode == existing().roomCode &&
+                       incoming().hostUid == existing().hostUid &&
+                       incoming().hostIgn == existing().hostIgn &&
+                       incoming().entry == existing().entry &&
+                       incoming().prizePool == existing().prizePool &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       (
+                         (existing().status == 'WAITING' &&
+                          incoming().status == 'CANCELLED' &&
+                          request.auth.uid == existing().hostUid &&
+                          incoming().guestUid == '' &&
+                          incoming().winnerUid == '' &&
+                          incoming().prizePaid == false &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'lastAction', 'updatedAt']) &&
+                          (existing().entry == 0 ||
+                           getAfter(/databases/$(database)/documents/users/$(existing().hostUid)).data.wallet == get(/databases/$(database)/documents/users/$(existing().hostUid)).data.wallet + existing().entry)) ||
+                         (existing().status == 'WAITING' &&
+                          incoming().status == 'PLAYING' &&
+                          request.auth.uid != existing().hostUid &&
+                          incoming().guestUid == request.auth.uid &&
+                          incoming().guestIgn.size() >= 2 &&
+                          incoming().winnerUid == '' &&
+                          incoming().prizePaid == false &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['guestUid', 'guestIgn', 'status', 'turnSlot', 'diceValue', 'awaitingMove', 'consecutiveSixes', 'lastAction', 'updatedAt']) &&
+                          (existing().entry == 0 ||
+                           getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.wallet == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.wallet - existing().entry)) ||
+                         (existing().status == 'PLAYING' &&
+                          incoming().status == 'PLAYING' &&
+                          incoming().guestUid == existing().guestUid &&
+                          incoming().guestIgn == existing().guestIgn &&
+                          incoming().winnerUid == '' &&
+                          incoming().prizePaid == false &&
+                          ((existing().turnSlot == 0 && request.auth.uid == existing().hostUid) ||
+                           (existing().turnSlot == 1 && request.auth.uid == existing().guestUid)) &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['turnSlot', 'diceValue', 'awaitingMove', 'consecutiveSixes', 'hostTokens', 'guestTokens', 'lastAction', 'updatedAt'])) ||
+                         (existing().status == 'PLAYING' &&
+                          incoming().status == 'COMPLETED' &&
+                          incoming().guestUid == existing().guestUid &&
+                          incoming().guestIgn == existing().guestIgn &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'turnSlot', 'diceValue', 'awaitingMove', 'consecutiveSixes', 'hostTokens', 'guestTokens', 'lastAction', 'winnerUid', 'winnerIgn', 'forfeitByUid', 'prizePaid', 'updatedAt']) &&
+                          (
+                            (incoming().forfeitByUid == '' &&
+                             ((existing().turnSlot == 0 && request.auth.uid == existing().hostUid && incoming().hostTokens == [57, 57, 57, 57] && incoming().winnerUid == existing().hostUid) ||
+                              (existing().turnSlot == 1 && request.auth.uid == existing().guestUid && incoming().guestTokens == [57, 57, 57, 57] && incoming().winnerUid == existing().guestUid))) ||
+                            ((request.auth.uid == existing().hostUid || request.auth.uid == existing().guestUid) &&
+                             incoming().forfeitByUid == request.auth.uid &&
+                             incoming().winnerUid == (request.auth.uid == existing().hostUid ? existing().guestUid : existing().hostUid))
+                          ) &&
+                          (
+                            (existing().prizePool == 0 && incoming().prizePaid == false) ||
+                            (existing().prizePool > 0 &&
+                             incoming().prizePaid == true &&
+                             getAfter(/databases/$(database)/documents/users/$(incoming().winnerUid)).data.wallet == get(/databases/$(database)/documents/users/$(incoming().winnerUid)).data.wallet + existing().prizePool)
+                          ))
+                       );
       allow delete: if false;
     }
   }

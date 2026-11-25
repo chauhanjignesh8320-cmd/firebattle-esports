@@ -135,6 +135,10 @@
           "type": "integer",
           "description": "Total referral bonus earnings in INR."
         },
+        "lastLudoRoomId": {
+          "type": "string",
+          "description": "Latest settled or cancelled Ludo room ID linked to a wallet adjustment."
+        },
         "createdAt": {
           "type": "string",
           "format": "date-time",
@@ -514,6 +518,40 @@
         }
       },
       "required": ["installId", "userId", "deviceModel", "appVersion", "firstSeenAt", "lastActiveAt"]
+    },
+    "LudoRoom": {
+      "title": "LudoRoom",
+      "description": "1vs1 multiplayer Ludo match table with real-time board state and optional cash prize pool.",
+      "type": "object",
+      "properties": {
+        "roomCode": { "type": "string", "description": "6-character uppercase room invite code." },
+        "hostUid": { "type": "string", "description": "Firebase Auth UID of the room creator (Red)." },
+        "hostIgn": { "type": "string", "description": "IGN of the room creator." },
+        "guestUid": { "type": "string", "description": "Firebase Auth UID of the opponent (Yellow), empty while waiting." },
+        "guestIgn": { "type": "string", "description": "IGN of the opponent." },
+        "entry": { "type": "integer", "description": "Per-player entry fee in INR (0 for free friend match)." },
+        "prizePool": { "type": "integer", "description": "Winner payout in INR after platform fee." },
+        "status": { "type": "string", "enum": ["WAITING", "PLAYING", "COMPLETED", "CANCELLED"], "description": "Room lifecycle state." },
+        "turnSlot": { "type": "integer", "description": "Active turn slot: 0 for host, 1 for guest." },
+        "diceValue": { "type": "integer", "description": "Latest rolled dice face (0-6)." },
+        "awaitingMove": { "type": "boolean", "description": "True when active player must select a token to move." },
+        "consecutiveSixes": { "type": "integer", "description": "Consecutive sixes rolled in the current turn." },
+        "hostTokens": { "type": "array", "description": "4 token progress positions (0-57) for host." },
+        "guestTokens": { "type": "array", "description": "4 token progress positions (0-57) for guest." },
+        "lastAction": { "type": "string", "description": "Latest game move summary." },
+        "winnerUid": { "type": "string", "description": "Winner Firebase Auth UID once completed." },
+        "winnerIgn": { "type": "string", "description": "Winner IGN once completed." },
+        "forfeitByUid": { "type": "string", "description": "UID of player who forfeited, if applicable." },
+        "prizePaid": { "type": "boolean", "description": "Whether the cash prize has been settled to winner wallet." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Room creation timestamp." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Latest room update timestamp." }
+      },
+      "required": [
+        "roomCode", "hostUid", "hostIgn", "guestUid", "guestIgn", "entry", "prizePool",
+        "status", "turnSlot", "diceValue", "awaitingMove", "consecutiveSixes",
+        "hostTokens", "guestTokens", "lastAction", "winnerUid", "winnerIgn",
+        "forfeitByUid", "prizePaid", "createdAt", "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -560,6 +598,10 @@
     "/appInstalls/{installId}": {
       "schema": { "$ref": "#/entities/AppInstall" },
       "description": "Per-device app install and daily active heartbeat records."
+    },
+    "/ludoRooms/{roomId}": {
+      "schema": { "$ref": "#/entities/LudoRoom" },
+      "description": "1vs1 multiplayer Ludo rooms and live game state."
     }
   }
 }

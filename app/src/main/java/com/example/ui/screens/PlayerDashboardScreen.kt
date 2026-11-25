@@ -136,6 +136,7 @@ import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
 import com.example.ui.theme.WalletTealDark
+import com.example.ui.viewmodel.LudoViewModel
 
 @Composable
 fun PlayerDashboardScreen(
@@ -148,6 +149,9 @@ fun PlayerDashboardScreen(
     depositsState: UiState<List<DepositRequest>>,
     withdrawalsState: UiState<List<WithdrawalRequest>>,
     referralsState: UiState<List<ReferralRecord>>,
+    ludoViewModel: LudoViewModel? = null,
+    showLudoArena: Boolean = false,
+    onSetShowLudoArena: (Boolean) -> Unit = {},
     selectedTab: PlayerTab = PlayerTab.TOURNAMENTS,
     onSelectTab: (PlayerTab) -> Unit = {},
     alertsDialogTrigger: Int = 0,
@@ -182,8 +186,23 @@ fun PlayerDashboardScreen(
         }
     }
 
-    BackHandler(enabled = selectedTab != PlayerTab.TOURNAMENTS) {
+    BackHandler(enabled = selectedTab != PlayerTab.TOURNAMENTS && !showLudoArena) {
         onSelectTab(PlayerTab.TOURNAMENTS)
+    }
+
+    if (showLudoArena && ludoViewModel != null) {
+        LudoArenaScreen(
+            ludoViewModel = ludoViewModel,
+            profile = profile,
+            onBackToHome = { onSetShowLudoArena(false) },
+            onOpenWallet = {
+                onSetShowLudoArena(false)
+                onSelectTab(PlayerTab.WALLET)
+            },
+            onCopyFeedback = onCopyFeedback,
+            modifier = modifier
+        )
+        return
     }
 
     BoxWithConstraints(
@@ -238,6 +257,7 @@ fun PlayerDashboardScreen(
                         initialReferralCode = initialReferralCode,
                         isBusy = isBusy,
                         onSelectTab = onSelectTab,
+                        onOpenLudo = { onSetShowLudoArena(true) },
                         onEditProfile = { showEditProfileDialog = true },
                         onRequestJoin = { pendingJoinMatch = it },
                         onInspectMatch = { inspectedMatch = it },
@@ -303,6 +323,7 @@ fun PlayerDashboardScreen(
                     initialReferralCode = initialReferralCode,
                     isBusy = isBusy,
                     onSelectTab = onSelectTab,
+                    onOpenLudo = { onSetShowLudoArena(true) },
                     onEditProfile = { showEditProfileDialog = true },
                     onRequestJoin = { pendingJoinMatch = it },
                     onInspectMatch = { inspectedMatch = it },
@@ -475,6 +496,7 @@ private fun PlayerTabContent(
     initialReferralCode: String = "",
     isBusy: Boolean,
     onSelectTab: (PlayerTab) -> Unit,
+    onOpenLudo: () -> Unit,
     onEditProfile: () -> Unit,
     onRequestJoin: (TournamentMatch) -> Unit,
     onInspectMatch: (TournamentMatch) -> Unit,
@@ -499,6 +521,7 @@ private fun PlayerTabContent(
             myRegistrationsListState = myRegistrationsListState,
             isBusy = isBusy,
             onSelectTab = onSelectTab,
+            onOpenLudo = onOpenLudo,
             onEditProfile = onEditProfile,
             onRequestJoin = onRequestJoin,
             onInspectMatch = onInspectMatch,
@@ -635,6 +658,7 @@ private fun TournamentsSection(
     myRegistrationsListState: UiState<List<MatchRegistration>>,
     isBusy: Boolean,
     onSelectTab: (PlayerTab) -> Unit,
+    onOpenLudo: () -> Unit,
     onEditProfile: () -> Unit,
     onRequestJoin: (TournamentMatch) -> Unit,
     onInspectMatch: (TournamentMatch) -> Unit,
@@ -699,6 +723,7 @@ private fun TournamentsSection(
                 activeCategoryTitle = selection.title
                 showArenaList = true
             },
+            onOpenLudo = onOpenLudo,
             onOpenWallet = { onSelectTab(PlayerTab.WALLET) },
             onOpenRefer = { onSelectTab(PlayerTab.REFER) },
             onOpenProfile = { onSelectTab(PlayerTab.PROFILE) },

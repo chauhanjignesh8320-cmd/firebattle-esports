@@ -110,7 +110,8 @@ private data class PromoSlide(
     val tag: String,
     val headline: String,
     val actionSelection: ArenaFilterSelection? = null,
-    val openReferTab: Boolean = false
+    val openReferTab: Boolean = false,
+    val openLudoArena: Boolean = false
 )
 
 @Composable
@@ -122,6 +123,7 @@ fun PlayerHomeArenaSection(
     joinedIds: Set<String>,
     myRegistrations: List<MatchRegistration>,
     onOpenArenaFilter: (ArenaFilterSelection) -> Unit,
+    onOpenLudo: () -> Unit = {},
     onOpenWallet: () -> Unit,
     onOpenRefer: () -> Unit,
     onOpenProfile: () -> Unit,
@@ -152,6 +154,12 @@ fun PlayerHomeArenaSection(
                 tag = "INSTANT ROOM ID",
                 headline = "1vs1, 2vs2 & 4vs4 Quick Cash Contests",
                 actionSelection = ArenaFilterSelection(mode = "Clash Squad", title = "Clash Squad")
+            ),
+            PromoSlide(
+                imageRes = R.drawable.img_tile_ludo,
+                tag = "NEW • IN-APP LUDO",
+                headline = "Play 1v1 Cash Ludo, Smart Bot & Pass & Play",
+                openLudoArena = true
             ),
             PromoSlide(
                 imageRes = R.drawable.img_trophy_banner,
@@ -331,10 +339,10 @@ fun PlayerHomeArenaSection(
             PromoBannerCarousel(
                 slides = promoSlides,
                 onSlideClick = { slide ->
-                    if (slide.openReferTab) {
-                        onOpenRefer()
-                    } else if (slide.actionSelection != null) {
-                        onOpenArenaFilter(slide.actionSelection)
+                    when {
+                        slide.openLudoArena -> onOpenLudo()
+                        slide.openReferTab -> onOpenRefer()
+                        slide.actionSelection != null -> onOpenArenaFilter(slide.actionSelection)
                     }
                 }
             )
@@ -396,6 +404,84 @@ fun PlayerHomeArenaSection(
                         },
                         modifier = Modifier.weight(1f)
                     )
+                }
+            }
+        }
+
+        // 4b. Built-in Firebattle Ludo Quick Entry Card
+        item {
+            Surface(
+                color = ArenaSlateDark,
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.5.dp, BlazeOrange.copy(alpha = 0.75f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .clickable(onClick = onOpenLudo)
+                    .testTag("ludo_open_tile")
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.img_tile_ludo),
+                        contentDescription = "Firebattle Ludo",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(64.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                    )
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = "FIREBATTLE LUDO",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = TextPrimary,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                            Surface(
+                                color = EmeraldWinContainer,
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text(
+                                    text = "LIVE",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = EmeraldWin,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                )
+                            }
+                        }
+                        Text(
+                            text = "1v1 Cash Tables • Smart Bot • 2P Pass & Play",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Surface(
+                        color = BlazeOrange,
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            text = "PLAY",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = ArenaWhiteCard,
+                            fontWeight = FontWeight.ExtraBold,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                        )
+                    }
                 }
             }
         }

@@ -44,6 +44,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.data.firebase.FirebattleRepository
+import com.example.data.firebase.LudoRepository
 import com.example.data.firebase.signOut
 import com.example.data.model.AppMode
 import com.example.data.model.PlayerTab
@@ -59,6 +60,7 @@ import com.example.ui.theme.ArenaObsidian
 import com.example.ui.theme.BlazeOrange
 import com.example.ui.theme.FirebattleTheme
 import com.example.ui.viewmodel.AdminViewModel
+import com.example.ui.viewmodel.LudoViewModel
 import com.example.ui.viewmodel.PlayerViewModel
 import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
@@ -217,6 +219,20 @@ private fun AuthenticatedArenaShell(
         }
     )
 
+    val ludoViewModel: LudoViewModel = viewModel(
+        key = "ludo_$currentUserId",
+        factory = viewModelFactory {
+            initializer {
+                val app = checkNotNull(this[APPLICATION_KEY]) {
+                    "APPLICATION_KEY missing from CreationExtras"
+                }
+                val databaseId = app.getString(R.string.firestore_database_id)
+                val db = FirebaseFirestore.getInstance(databaseId)
+                LudoViewModel(LudoRepository(db), currentUserId)
+            }
+        }
+    )
+
     val isAdmin by playerViewModel.isAdmin.collectAsStateWithLifecycle()
     val profileState by playerViewModel.profileState.collectAsStateWithLifecycle()
     val settingsState by playerViewModel.settingsState.collectAsStateWithLifecycle()
@@ -231,6 +247,7 @@ private fun AuthenticatedArenaShell(
 
     var currentMode by rememberSaveable { mutableStateOf(AppMode.PLAYER) }
     var selectedPlayerTab by rememberSaveable { mutableStateOf(PlayerTab.TOURNAMENTS) }
+    var showLudoArena by rememberSaveable { mutableStateOf(false) }
     var alertsDialogTrigger by rememberSaveable { mutableStateOf(0) }
     var adminDepositsTabTrigger by rememberSaveable { mutableIntStateOf(0) }
     var askedNotificationPermission by rememberSaveable { mutableStateOf(false) }
@@ -306,6 +323,12 @@ private fun AuthenticatedArenaShell(
 
     LaunchedEffect(playerViewModel) {
         playerViewModel.events.collect { msg ->
+            snackbarHostState.showSnackbar(msg)
+        }
+    }
+
+    LaunchedEffect(ludoViewModel) {
+        ludoViewModel.events.collect { msg ->
             snackbarHostState.showSnackbar(msg)
         }
     }
@@ -420,7 +443,9 @@ private fun AuthenticatedArenaShell(
                     containerColor = ArenaObsidian,
                     snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
                     topBar = {
-                        if (!(currentMode == AppMode.PLAYER && selectedPlayerTab == PlayerTab.WALLET)) {
+                        val hideTopBar = currentMode == AppMode.PLAYER &&
+                            (selectedPlayerTab == PlayerTab.WALLET || (selectedPlayerTab == PlayerTab.TOURNAMENTS && showLudoArena))
+                        if (!hideTopBar) {
                             FirebattleTopBar(
                                 currentMode = currentMode,
                                 isAdmin = isAdmin,
@@ -566,6 +591,9 @@ private fun AuthenticatedArenaShell(
                                 depositsState = depositsState,
                                 withdrawalsState = withdrawalsState,
                                 referralsState = referralsState,
+                                ludoViewModel = ludoViewModel,
+                                showLudoArena = showLudoArena,
+                                onSetShowLudoArena = { showLudoArena = it },
                                 selectedTab = selectedPlayerTab,
                                 onSelectTab = { selectedPlayerTab = it },
                                 alertsDialogTrigger = alertsDialogTrigger,

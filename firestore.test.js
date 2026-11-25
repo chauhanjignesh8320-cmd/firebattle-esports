@@ -1691,6 +1691,250 @@ test("appInstalls tracks unique devices securely with admin-only listing", async
   await assertSucceeds(adminDb.collection("appInstalls").get());
 });
 
+test("Ludo Rooms: atomic create, join, active-turn enforcement, cheat-proof win payout & cancel refund", async () => {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await db.collection("users").doc(ALICE_UID).set({
+      userId: ALICE_UID,
+      email: "alice@example.com",
+      ign: "AliceFF",
+      gameUid: "111222",
+      phone: "9876543210",
+      wallet: 100,
+      winningBalance: 20,
+      createdAt: pastDate(10000),
+      updatedAt: pastDate(10000),
+    });
+    await db.collection("users").doc(BOB_UID).set({
+      userId: BOB_UID,
+      email: "bob@example.com",
+      ign: "BobGamer",
+      gameUid: "333444",
+      phone: "9876543211",
+      wallet: 100,
+      winningBalance: 0,
+      createdAt: pastDate(10000),
+      updatedAt: pastDate(10000),
+    });
+  });
+
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+  const bobDb = testEnv.authenticatedContext(BOB_UID).firestore();
+  const charlieDb = testEnv.authenticatedContext("charlie_789").firestore();
+
+  // 1. Alice cannot create a cash room with inflated prizePool or without deducting wallet
+  await assertFails(
+    aliceDb.collection("ludoRooms").doc("room_bad_prize").set({
+      roomCode: "LUDO01",
+      hostUid: ALICE_UID,
+      hostIgn: "AliceFF",
+      guestUid: "",
+      guestIgn: "",
+      entry: 50,
+      prizePool: 500,
+      status: "WAITING",
+      turnSlot: 0,
+      diceValue: 0,
+      awaitingMove: false,
+      consecutiveSixes: 0,
+      hostTokens: [0, 0, 0, 0],
+      guestTokens: [0, 0, 0, 0],
+      lastAction: "Created",
+      winnerUid: "",
+      winnerIgn: "",
+      forfeitByUid: "",
+      prizePaid: false,
+      createdAt: pastDate(2000),
+      updatedAt: pastDate(2000),
+    })
+  );
+
+  // 2. Alice creates cash room atomically (entry ₹50 -> prizePool ₹90)
+  await assertSucceeds(
+    aliceDb.runTransaction(async (tx) => {
+      const userRef = aliceDb.collection("users").doc(ALICE_UID);
+      const roomRef = aliceDb.collection("ludoRooms").doc("room_cash_1");
+      tx.update(userRef, {
+        wallet: 50,
+        winningBalance: 20,
+        updatedAt: pastDate(1000),
+      });
+      tx.set(roomRef, {
+        roomCode: "LD1001",
+        hostUid: ALICE_UID,
+        hostIgn: "AliceFF",
+        guestUid: "",
+        guestIgn: "",
+        entry: 50,
+        prizePool: 90,
+        status: "WAITING",
+        turnSlot: 0,
+        diceValue: 0,
+        awaitingMove: false,
+        consecutiveSixes: 0,
+        hostTokens: [0, 0, 0, 0],
+        guestTokens: [0, 0, 0, 0],
+        lastAction: "Table opened for ₹50",
+        winnerUid: "",
+        winnerIgn: "",
+        forfeitByUid: "",
+        prizePaid: false,
+        createdAt: pastDate(1000),
+        updatedAt: pastDate(1000),
+      });
+    })
+  );
+
+  // 3. Alice can cancel her WAITING room and receive exact ₹50 refund atomically
+  await assertSucceeds(
+    aliceDb.runTransaction(async (tx) => {
+      const userRef = aliceDb.collection("users").doc(ALICE_UID);
+      const roomRef = aliceDb.collection("ludoRooms").doc("room_cash_1");
+      tx.update(userRef, {
+        wallet: 100,
+        lastLudoRoomId: "room_cash_1",
+        updatedAt: pastDate(500),
+      });
+      tx.update(roomRef, {
+        status: "CANCELLED",
+        lastAction: "Cancelled by host",
+        updatedAt: pastDate(500),
+      });
+    })
+  );
+
+  // 4. Create second room for live match & win payout test
+  await assertSucceeds(
+    aliceDb.runTransaction(async (tx) => {
+      tx.update(aliceDb.collection("users").doc(ALICE_UID), {
+        wallet: 50,
+        winningBalance: 20,
+        updatedAt: pastDate(400),
+      });
+      tx.set(aliceDb.collection("ludoRooms").doc("room_cash_2"), {
+        roomCode: "LD2002",
+        hostUid: ALICE_UID,
+        hostIgn: "AliceFF",
+        guestUid: "",
+        guestIgn: "",
+        entry: 50,
+        prizePool: 90,
+        status: "WAITING",
+        turnSlot: 0,
+        diceValue: 0,
+        awaitingMove: false,
+        consecutiveSixes: 0,
+        hostTokens: [0, 0, 0, 0],
+        guestTokens: [0, 0, 0, 0],
+        lastAction: "Waiting",
+        winnerUid: "",
+        winnerIgn: "",
+        forfeitByUid: "",
+        prizePaid: false,
+        createdAt: pastDate(400),
+        updatedAt: pastDate(400),
+      });
+    })
+  );
+
+  // 5. Bob joins atomically (deducts ₹50)
+  await assertSucceeds(
+    bobDb.runTransaction(async (tx) => {
+      tx.update(bobDb.collection("users").doc(BOB_UID), {
+        wallet: 50,
+        winningBalance: 0,
+        updatedAt: pastDate(300),
+      });
+      tx.update(bobDb.collection("ludoRooms").doc("room_cash_2"), {
+        guestUid: BOB_UID,
+        guestIgn: "BobGamer",
+        status: "PLAYING",
+        turnSlot: 0,
+        diceValue: 0,
+        awaitingMove: false,
+        consecutiveSixes: 0,
+        lastAction: "BobGamer joined!",
+        updatedAt: pastDate(300),
+      });
+    })
+  );
+
+  // 6. Outsider Charlie cannot list or update PLAYING room; Bob cannot move out of turn
+  await assertFails(
+    charlieDb.collection("ludoRooms").doc("room_cash_2").update({
+      lastAction: "Hijacked",
+      updatedAt: pastDate(250),
+    })
+  );
+  await assertFails(
+    bobDb.collection("ludoRooms").doc("room_cash_2").update({
+      turnSlot: 1,
+      diceValue: 6,
+      awaitingMove: true,
+      consecutiveSixes: 1,
+      hostTokens: [0, 0, 0, 0],
+      guestTokens: [1, 0, 0, 0],
+      lastAction: "Cheating out of turn",
+      updatedAt: pastDate(250),
+    })
+  );
+
+  // 7. Alice cannot falsely claim victory without all 4 tokens at 57
+  await assertFails(
+    aliceDb.runTransaction(async (tx) => {
+      tx.update(aliceDb.collection("users").doc(ALICE_UID), {
+        wallet: 140,
+        winningBalance: 110,
+        lastLudoRoomId: "room_cash_2",
+        updatedAt: pastDate(200),
+      });
+      tx.update(aliceDb.collection("ludoRooms").doc("room_cash_2"), {
+        status: "COMPLETED",
+        turnSlot: 0,
+        diceValue: 6,
+        awaitingMove: false,
+        consecutiveSixes: 0,
+        hostTokens: [57, 57, 57, 10],
+        guestTokens: [0, 0, 0, 0],
+        lastAction: "Fake win",
+        winnerUid: ALICE_UID,
+        winnerIgn: "AliceFF",
+        forfeitByUid: "",
+        prizePaid: true,
+        updatedAt: pastDate(200),
+      });
+    })
+  );
+
+  // 8. Alice completes all 4 tokens at 57 and receives ₹90 prize into wallet & winningBalance
+  await assertSucceeds(
+    aliceDb.runTransaction(async (tx) => {
+      tx.update(aliceDb.collection("users").doc(ALICE_UID), {
+        wallet: 140,
+        winningBalance: 110,
+        lastLudoRoomId: "room_cash_2",
+        updatedAt: pastDate(100),
+      });
+      tx.update(aliceDb.collection("ludoRooms").doc("room_cash_2"), {
+        status: "COMPLETED",
+        turnSlot: 0,
+        diceValue: 2,
+        awaitingMove: false,
+        consecutiveSixes: 0,
+        hostTokens: [57, 57, 57, 57],
+        guestTokens: [14, 0, 0, 0],
+        lastAction: "AliceFF won ₹90!",
+        winnerUid: ALICE_UID,
+        winnerIgn: "AliceFF",
+        forfeitByUid: "",
+        prizePaid: true,
+        updatedAt: pastDate(100),
+      });
+    })
+  );
+});
+
+
 
 
 
