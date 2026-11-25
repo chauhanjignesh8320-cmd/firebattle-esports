@@ -950,7 +950,7 @@ private fun AddMoneyRealUpiPanel(
                 amount = depAmount.toLongOrNull(),
                 onFeedback = onCopyFeedback,
                 isLightSurface = true,
-                showQrSection = false,
+                showQrSection = true,
                 isBusy = isBusy,
                 onAutoSubmitUpiDeposit = { paidAmount, capturedRef ->
                     onSubmitDeposit(paidAmount.toString(), capturedRef) {

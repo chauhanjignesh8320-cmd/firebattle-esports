@@ -399,16 +399,15 @@ fun UpiQrPaymentCard(
                                 .testTag("upi_qr_code_image")
                         )
                     }
-                } else {
-                    Text(
-                        text = "Verified Receiver: ${upiName.ifBlank { "Firebattle" }} ($cleanUpi)",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontFamily = JetBrainsMonoFamily,
-                        color = titleColor,
-                        fontWeight = FontWeight.SemiBold,
-                        textAlign = TextAlign.Center
-                    )
                 }
+                Text(
+                    text = "Verified Receiver: ${upiName.ifBlank { "Firebattle" }} ($cleanUpi)",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontFamily = JetBrainsMonoFamily,
+                    color = titleColor,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center
+                )
 
                 Button(
                     onClick = {
