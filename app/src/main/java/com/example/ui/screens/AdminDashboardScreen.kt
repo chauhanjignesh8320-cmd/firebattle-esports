@@ -774,7 +774,7 @@ private fun AdminDepositCard(
                         color = EmeraldWin
                     )
                     Text(
-                        text = "+91 ${deposit.phone} • Ref/UTR: ${deposit.utr}",
+                        text = "+91 ${deposit.phone} • Ref ID: ${deposit.utr}",
                         style = MaterialTheme.typography.labelSmall,
                         fontFamily = JetBrainsMonoFamily,
                         color = TextPrimary

@@ -30,8 +30,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,6 +49,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.R
 import com.example.ui.theme.ArenaInkDark
 import com.example.ui.theme.ArenaInkMuted
@@ -168,10 +175,19 @@ fun UpiQrPaymentCard(
     onReturnedFromUpiApp: ((Long, String, Boolean) -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val cleanUpi = upiId.trim()
     val hasValidUpi = cleanUpi.length >= 3 && cleanUpi.contains("@")
     val pendingRefState = rememberSaveable { mutableStateOf("") }
-    val pendingAmountState = rememberSaveable { mutableStateOf(0L) }
+    val pendingAmountState = rememberSaveable { mutableLongStateOf(0L) }
+    val pendingLaunchTimeMs = rememberSaveable { mutableLongStateOf(0L) }
+    val pendingAutoSubmitted = rememberSaveable { mutableStateOf(false) }
+
+    val latestOnUpiRefCaptured by rememberUpdatedState(onUpiRefCaptured)
+    val latestOnAutoSubmit by rememberUpdatedState(onAutoSubmitUpiDeposit)
+    val latestOnReturned by rememberUpdatedState(onReturnedFromUpiApp)
+    val latestOnFeedback by rememberUpdatedState(onFeedback)
+
     val upiUri = remember(cleanUpi, upiName, amount) {
         if (hasValidUpi) buildUpiPaymentUri(cleanUpi, upiName, amount) else ""
     }
@@ -179,31 +195,82 @@ fun UpiQrPaymentCard(
         if (upiUri.isNotBlank()) generateQrImageBitmap(upiUri) else null
     }
 
+    fun tryAutoSubmit(launchedAmount: Long, ref: String): Boolean {
+        val submit = latestOnAutoSubmit ?: return false
+        if (pendingAutoSubmitted.value || launchedAmount <= 0L) return false
+        pendingAutoSubmitted.value = true
+        pendingAmountState.longValue = 0L
+        pendingLaunchTimeMs.longValue = 0L
+        latestOnUpiRefCaptured(ref)
+        submit(launchedAmount, ref)
+        return true
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                val activeAmount = pendingAmountState.longValue
+                val launchedAt = pendingLaunchTimeMs.longValue
+                if (activeAmount > 0L && launchedAt > 0L && !pendingAutoSubmitted.value) {
+                    val elapsedMs = System.currentTimeMillis() - launchedAt
+                    if (elapsedMs >= 2_500L) {
+                        val resolvedRef = pendingRefState.value.takeIf { it.length >= 6 } ?: generateUpiTxnRef()
+                        tryAutoSubmit(activeAmount, resolvedRef)
+                    }
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     val upiLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         val raw = result.data?.getStringExtra("response")
+            ?: result.data?.getStringExtra("Status")
+            ?: result.data?.getStringExtra("status")
         val outcome = parseUpiIntentResponse(raw)
-        val launchedAmount = pendingAmountState.value.takeIf { it > 0L } ?: (amount ?: 0L)
+        val launchedAmount = pendingAmountState.longValue.takeIf { it > 0L } ?: (amount ?: 0L)
+        val elapsedMs = if (pendingLaunchTimeMs.longValue > 0L) {
+            System.currentTimeMillis() - pendingLaunchTimeMs.longValue
+        } else {
+            0L
+        }
         val resolvedRef = outcome.referenceId.takeIf { it.length >= 6 }
             ?: pendingRefState.value.takeIf { it.length >= 6 }
             ?: generateUpiTxnRef()
 
         when {
-            (outcome.isSuccess || (result.resultCode == Activity.RESULT_OK && !outcome.isExplicitFailure)) &&
-                launchedAmount > 0L &&
-                onAutoSubmitUpiDeposit != null -> {
-                onUpiRefCaptured(resolvedRef)
-                onAutoSubmitUpiDeposit(launchedAmount, resolvedRef)
-            }
             outcome.isExplicitFailure -> {
-                onReturnedFromUpiApp?.invoke(launchedAmount, "", true)
-                onFeedback("UPI payment ${outcome.statusLabel.lowercase()}. Request was not sent.")
+                pendingAmountState.longValue = 0L
+                pendingLaunchTimeMs.longValue = 0L
+                pendingAutoSubmitted.value = true
+                latestOnReturned?.invoke(launchedAmount, "", true)
+                latestOnFeedback("UPI payment ${outcome.statusLabel.lowercase()}. Request was not sent.")
+            }
+            (outcome.isSuccess ||
+                result.resultCode == Activity.RESULT_OK ||
+                (raw.isNullOrBlank() && elapsedMs >= 2_500L)) &&
+                launchedAmount > 0L &&
+                latestOnAutoSubmit != null -> {
+                tryAutoSubmit(launchedAmount, resolvedRef)
+            }
+            raw.isNullOrBlank() && elapsedMs < 2_500L && launchedAmount > 0L -> {
+                // Some UPI apps (e.g. PhonePe/Paytm singleTask) cancel the result callback immediately
+                // while still staying open for payment; keep pendingLaunchTimeMs armed for ON_RESUME,
+                // and show the 1-tap confirm fallback as backup.
+                latestOnUpiRefCaptured(resolvedRef)
+                latestOnReturned?.invoke(launchedAmount, resolvedRef, false)
             }
             else -> {
-                onUpiRefCaptured(resolvedRef)
-                onReturnedFromUpiApp?.invoke(launchedAmount, resolvedRef, false)
-                onFeedback("Returned from UPI app — tap 'Yes, Paid' below if ₹$launchedAmount was deducted!")
+                pendingAmountState.longValue = 0L
+                pendingLaunchTimeMs.longValue = 0L
+                latestOnUpiRefCaptured(resolvedRef)
+                latestOnReturned?.invoke(launchedAmount, resolvedRef, false)
+                latestOnFeedback("Tap 'Yes, Paid' below if ₹$launchedAmount was deducted!")
             }
         }
     }
@@ -293,17 +360,21 @@ fun UpiQrPaymentCard(
                         }
                         val txnRef = generateUpiTxnRef()
                         pendingRefState.value = txnRef
-                        pendingAmountState.value = amount
+                        pendingAmountState.longValue = amount
+                        pendingLaunchTimeMs.longValue = System.currentTimeMillis()
+                        pendingAutoSubmitted.value = false
                         val payUri = buildUpiPaymentUri(
                             upiId = cleanUpi,
                             upiName = upiName,
                             amount = amount,
-                            transactionRef = txnRef
+                            transactionNote = "Firebattle Wallet $txnRef"
                         )
                         val payIntent = Intent(Intent.ACTION_VIEW, Uri.parse(payUri))
                         try {
-                            upiLauncher.launch(Intent.createChooser(payIntent, "Pay ₹$amount via UPI App"))
+                            upiLauncher.launch(payIntent)
                         } catch (_: ActivityNotFoundException) {
+                            pendingAmountState.longValue = 0L
+                            pendingLaunchTimeMs.longValue = 0L
                             onFeedback("No UPI app found on this phone. Scan QR from another phone or copy UPI ID.")
                         }
                     },

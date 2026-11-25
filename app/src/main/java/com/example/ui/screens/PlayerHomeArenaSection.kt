@@ -880,7 +880,7 @@ private fun ContactOrganizerDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    text = "Need help with match Room ID, deposit UTR approval, or withdrawal settlement? Reach the Firebattle organizer directly:",
+                    text = "Need help with match Room ID, UPI deposit approval, or withdrawal settlement? Reach the Firebattle organizer directly:",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextSecondary
                 )

@@ -1223,7 +1223,7 @@ private fun RequestsHistorySection(
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "₹${dep.amount} • UTR: ${dep.utr}",
+                                        text = "₹${dep.amount} • Ref: ${dep.utr}",
                                         style = MaterialTheme.typography.titleSmall,
                                         color = TextPrimary
                                     )

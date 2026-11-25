@@ -1013,7 +1013,7 @@ private fun AddMoneyRealUpiPanel(
                     awaitingUpiConfirmAmount = 0L
                     awaitingUpiConfirmRef = ""
                     onSubmitDeposit(paidAmount.toString(), capturedRef) {
-                        lastSubmittedSummary = "₹$paidAmount request sent to Admin automatically (Ref: $capturedRef)."
+                        lastSubmittedSummary = "₹$paidAmount payment request sent directly to Admin (Ref: $capturedRef)."
                         depUtr = ""
                     }
                 },
@@ -1048,7 +1048,7 @@ private fun AddMoneyRealUpiPanel(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "No need to type UTR — tap below to notify Admin immediately.",
+                            text = "Tap below to send request directly to Admin — no UTR number needed.",
                             style = MaterialTheme.typography.bodySmall,
                             color = ArenaInkMuted
                         )
@@ -1057,7 +1057,7 @@ private fun AddMoneyRealUpiPanel(
                                 val amt = awaitingUpiConfirmAmount
                                 val ref = depUtr.trim().ifBlank { awaitingUpiConfirmRef }
                                 onSubmitDeposit(amt.toString(), ref) {
-                                    lastSubmittedSummary = "₹$amt request sent to Admin (Ref: $ref)."
+                                    lastSubmittedSummary = "₹$amt request sent directly to Admin (Ref: $ref)."
                                     awaitingUpiConfirmAmount = 0L
                                     awaitingUpiConfirmRef = ""
                                     depUtr = ""
@@ -1083,17 +1083,12 @@ private fun AddMoneyRealUpiPanel(
                 }
             }
 
-            OutlinedTextField(
-                value = depUtr,
-                onValueChange = { depUtr = it.take(32) },
-                label = { Text("UTR / UPI Ref Number (Optional)") },
-                placeholder = { Text("Auto-filled or leave blank after paying", color = ArenaInkMuted) },
-                singleLine = true,
-                colors = lightFieldColors,
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("deposit_utr_input")
+            Text(
+                text = "Paid by scanning QR or copying UPI ID? Tap below (no UTR required):",
+                style = MaterialTheme.typography.labelSmall,
+                color = ArenaInkMuted,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
             )
 
             Button(
@@ -1101,7 +1096,7 @@ private fun AddMoneyRealUpiPanel(
                     val submittedAmount = depAmount.trim()
                     val submittedUtr = depUtr.trim()
                     onSubmitDeposit(submittedAmount, submittedUtr) {
-                        lastSubmittedSummary = "₹$submittedAmount deposit request sent to Admin."
+                        lastSubmittedSummary = "₹$submittedAmount deposit request sent directly to Admin."
                         awaitingUpiConfirmAmount = 0L
                         awaitingUpiConfirmRef = ""
                         depAmount = ""
@@ -1120,7 +1115,11 @@ private fun AddMoneyRealUpiPanel(
                     .testTag("submit_deposit_button")
             ) {
                 Text(
-                    text = stringResource(R.string.submit_deposit),
+                    text = if (enteredDepAmount > 0L) {
+                        "I Have Paid ₹$enteredDepAmount — Notify Admin"
+                    } else {
+                        stringResource(R.string.submit_deposit)
+                    },
                     fontWeight = FontWeight.Bold
                 )
             }
@@ -1345,7 +1344,7 @@ private fun WalletTransactionsPanel(
                 add(
                     WalletTxEntry(
                         id = "dep_${dep.id}",
-                        title = "UPI Deposit • UTR ${dep.utr}",
+                        title = "UPI Deposit • Ref ${dep.utr}",
                         subtitle = if (dep.bonusAmount > 0L) {
                             "Paid ₹${dep.amount} + ₹${dep.bonusAmount} Offer Bonus • ${formatTimestampShort(dep.createdAt)}"
                         } else {

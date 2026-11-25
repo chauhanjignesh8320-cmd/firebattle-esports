@@ -206,7 +206,7 @@ fun AuthScreen(
                             icon = Icons.Filled.AccountBalanceWallet,
                             tint = BlazeOrange,
                             title = "Verified UPI Wallet",
-                            subtitle = "Track UTR deposits, match entry fees, and payouts live."
+                            subtitle = "Direct UPI deposits, match entry fees, and payouts live."
                         )
                         ArenaHighlightRow(
                             icon = Icons.Filled.Shield,
