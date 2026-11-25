@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.firebase.LudoRepository
 import com.example.data.model.LudoPlayMode
 import com.example.data.model.LudoRoom
+import com.example.data.model.MatchRegistration
+import com.example.data.model.TournamentMatch
 import com.example.data.model.UiState
 import com.example.data.model.UserProfile
 import com.example.ludo.LudoEngine
@@ -93,6 +95,23 @@ class LudoViewModel(
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), UiState.Success(null))
 
+    private val _inspectedMatchId = MutableStateFlow<String?>(null)
+
+    val inspectedMatchBoardsState: StateFlow<UiState<List<LudoRoom>>> =
+        _inspectedMatchId
+            .flatMapLatest { matchId ->
+                if (matchId.isNullOrBlank()) {
+                    flowOf(UiState.Success(emptyList()))
+                } else {
+                    repository.observeMatchBoards(matchId, currentUserId).toUiState("match Ludo boards")
+                }
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), UiState.Success(emptyList()))
+
+    fun setInspectedMatchId(matchId: String?) {
+        _inspectedMatchId.value = matchId
+    }
+
     fun openOnlineRoom(roomId: String) {
         botTurnJob?.cancel()
         _localState.value = LocalLudoState(mode = LudoPlayMode.LOBBY)
@@ -101,6 +120,29 @@ class LudoViewModel(
 
     fun closeActiveRoom() {
         _activeRoomId.value = null
+    }
+
+    fun playTournamentMatch(
+        match: TournamentMatch,
+        registration: MatchRegistration,
+        profile: UserProfile,
+        onOpened: () -> Unit = {}
+    ) {
+        if (_isBusy.value) return
+        viewModelScope.launch {
+            _isBusy.value = true
+            try {
+                val res = repository.openOrJoinTournamentBoard(match, registration, profile)
+                res.onSuccess { roomId ->
+                    openOnlineRoom(roomId)
+                    onOpened()
+                }.onFailure { err ->
+                    _events.emit(err.message ?: "Unable to open in-app Ludo board.")
+                }
+            } finally {
+                _isBusy.value = false
+            }
+        }
     }
 
     fun startBotMatch(playerIgn: String) {

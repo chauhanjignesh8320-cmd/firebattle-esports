@@ -4,9 +4,11 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.firebase.FirebattleRepository
+import com.example.data.firebase.LudoRepository
 import com.example.data.model.AppInstall
 import com.example.data.model.AppSettings
 import com.example.data.model.DepositRequest
+import com.example.data.model.LudoRoom
 import com.example.data.model.MatchRegistration
 import com.example.data.model.MatchStatus
 import com.example.data.model.OwnerPayout
@@ -52,7 +54,8 @@ data class AdminSettingsDraft(
 
 class AdminViewModel(
     private val repository: FirebattleRepository,
-    private val currentUserId: String
+    private val currentUserId: String,
+    private val ludoRepository: LudoRepository? = null
 ) : ViewModel() {
 
     private val _isBusy = MutableStateFlow(false)
@@ -135,6 +138,16 @@ class AdminViewModel(
     val ownerPayoutsState: StateFlow<UiState<List<OwnerPayout>>> = repository.observeOwnerPayouts(currentUserId)
         .toUiState("owner payouts")
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), UiState.Loading)
+
+    val tournamentBoardsByMatchState: StateFlow<Map<String, List<LudoRoom>>> =
+        (ludoRepository?.observeAllTournamentBoards(currentUserId) ?: kotlinx.coroutines.flow.flowOf(emptyList()))
+            .map { boards -> boards.groupBy { it.matchId } }
+            .catch { error ->
+                if (error is CancellationException) throw error
+                Log.w(TAG, "Stream error loading tournament Ludo boards", error)
+                emit(emptyMap())
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), emptyMap())
 
     fun createMatch(
         title: String,

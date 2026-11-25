@@ -2,6 +2,9 @@ package com.example.data.firebase
 
 import com.example.data.model.LudoRoom
 import com.example.data.model.LudoRoomStatus
+import com.example.data.model.MatchRegistration
+import com.example.data.model.TournamentLudoPairing
+import com.example.data.model.TournamentMatch
 import com.example.data.model.UserProfile
 import com.example.ludo.LudoEngine
 import com.google.firebase.Firebase
@@ -97,6 +100,121 @@ class LudoRepository(
                 }
                 .catch { error -> handleStreamError(error, OperationType.GET, path, uid) }
         )
+    }
+
+    fun observeMatchBoards(matchId: String, uid: String): Flow<List<LudoRoom>> = flow {
+        val path = "ludoRooms"
+        emitAll(
+            db.collection("ludoRooms")
+                .whereEqualTo("matchId", matchId)
+                .snapshots()
+                .map { snapshot ->
+                    snapshot.toObjects(LudoRoom::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
+                        .sortedBy { it.boardNumber }
+                }
+                .catch { error -> handleStreamError(error, OperationType.LIST, path, uid) }
+        )
+    }
+
+    fun observeAllTournamentBoards(uid: String): Flow<List<LudoRoom>> = flow {
+        val path = "ludoRooms"
+        emitAll(
+            db.collection("ludoRooms")
+                .snapshots()
+                .map { snapshot ->
+                    snapshot.toObjects(LudoRoom::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
+                        .filter { it.matchId.isNotBlank() }
+                        .sortedBy { it.boardNumber }
+                }
+                .catch { error -> handleStreamError(error, OperationType.LIST, path, uid) }
+        )
+    }
+
+    suspend fun openOrJoinTournamentBoard(
+        match: TournamentMatch,
+        registration: MatchRegistration,
+        profile: UserProfile
+    ): Result<String> {
+        var path = "ludoRooms"
+        return try {
+            val uid = requireUserId()
+            check(uid == profile.userId) { "Signed-in user changed." }
+            require(registration.matchId == match.id) { "Registration does not belong to this match." }
+            require(registration.slotNumber in 1L..match.slots) { "Please book a valid slot first." }
+
+            val boardNumber = TournamentLudoPairing.boardForSlot(registration.slotNumber, match.slots)
+            val opponentSlot = TournamentLudoPairing.opponentSlotFor(registration.slotNumber, match.slots)
+            val roomId = TournamentLudoPairing.roomDocId(match.id, boardNumber)
+            val roomRef = db.collection("ludoRooms").document(roomId)
+            path = roomRef.path
+
+            val cleanIgn = registration.ign.trim().ifBlank { profile.ign.trim() }.take(30).ifBlank { "Player" }
+            val roomCode = "TBL" + boardNumber.toString().padStart(2, '0')
+
+            db.runTransaction { tx ->
+                val snap = tx.get(roomRef)
+                if (snap.exists()) {
+                    val existing = snap.toObject(LudoRoom::class.java) ?: throw IllegalStateException("Invalid board.")
+                    when {
+                        existing.hostUid == uid || existing.guestUid == uid -> Unit
+                        existing.status == LudoRoomStatus.WAITING.wireValue -> {
+                            tx.update(
+                                roomRef,
+                                mapOf(
+                                    "guestUid" to uid,
+                                    "guestIgn" to cleanIgn,
+                                    "status" to LudoRoomStatus.PLAYING.wireValue,
+                                    "turnSlot" to 0L,
+                                    "diceValue" to 0L,
+                                    "awaitingMove" to false,
+                                    "consecutiveSixes" to 0L,
+                                    "lastAction" to "$cleanIgn joined Board #$boardNumber! ${existing.hostIgn}'s turn.",
+                                    "updatedAt" to FieldValue.serverTimestamp()
+                                )
+                            )
+                        }
+                        else -> throw IllegalStateException("Board #$boardNumber is already full or completed.")
+                    }
+                } else {
+                    tx.set(
+                        roomRef,
+                        mapOf(
+                            "roomCode" to roomCode,
+                            "hostUid" to uid,
+                            "hostIgn" to cleanIgn,
+                            "guestUid" to "",
+                            "guestIgn" to "",
+                            "entry" to 0L,
+                            "prizePool" to 0L,
+                            "status" to LudoRoomStatus.WAITING.wireValue,
+                            "turnSlot" to 0L,
+                            "diceValue" to 0L,
+                            "awaitingMove" to false,
+                            "consecutiveSixes" to 0L,
+                            "hostTokens" to listOf(0L, 0L, 0L, 0L),
+                            "guestTokens" to listOf(0L, 0L, 0L, 0L),
+                            "lastAction" to "Board #$boardNumber ready! Waiting for Slot #$opponentSlot.",
+                            "winnerUid" to "",
+                            "winnerIgn" to "",
+                            "forfeitByUid" to "",
+                            "prizePaid" to false,
+                            "matchId" to match.id,
+                            "boardNumber" to boardNumber,
+                            "createdAt" to FieldValue.serverTimestamp(),
+                            "updatedAt" to FieldValue.serverTimestamp()
+                        )
+                    )
+                }
+                Unit
+            }.await()
+
+            Result.success(roomId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.WRITE, path)
+            Result.failure(e)
+        }
     }
 
     suspend fun createLudoRoom(profile: UserProfile, entry: Long): Result<String> {

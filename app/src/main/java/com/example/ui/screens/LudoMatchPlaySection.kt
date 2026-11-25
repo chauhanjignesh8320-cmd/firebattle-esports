@@ -113,22 +113,45 @@ fun LudoOnlineWaitingRoomCard(
                 }
 
                 Text(
-                    text = if (room.entry > 0L) "1v1 Cash Ludo Table" else "1v1 Friendly Ludo Table",
+                    text = when {
+                        room.isTournamentBoard -> "Board #${room.boardNumber} • Tournament Match"
+                        room.entry > 0L -> "1v1 Cash Ludo Table"
+                        else -> "1v1 Friendly Ludo Table"
+                    },
                     style = MaterialTheme.typography.titleLarge,
                     color = TextPrimary,
-                    fontWeight = FontWeight.ExtraBold
+                    fontWeight = FontWeight.ExtraBold,
+                    textAlign = TextAlign.Center
                 )
 
                 Text(
-                    text = if (room.entry > 0L) {
-                        "Entry: ₹${room.entry}  •  Winner Prize: ₹${room.prizePool}"
-                    } else {
-                        "Free Friendly Match"
+                    text = when {
+                        room.isTournamentBoard -> "In-App Auto-Paired Board • No Room Code Needed"
+                        room.entry > 0L -> "Entry: ₹${room.entry}  •  Winner Prize: ₹${room.prizePool}"
+                        else -> "Free Friendly Match"
                     },
                     style = MaterialTheme.typography.titleSmall,
                     color = EmeraldWin,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
                 )
+
+                if (room.isTournamentBoard) {
+                    Surface(
+                        color = ArenaObsidian,
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(1.dp, EmeraldWin.copy(alpha = 0.45f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "You are seated on Board #${room.boardNumber} (${room.hostIgn}). As soon as your paired slot opponent taps PLAY LUDO, this board starts live automatically!",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextPrimary,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(14.dp)
+                        )
+                    }
+                } else {
 
                 Surface(
                     color = ArenaObsidian,
@@ -173,6 +196,7 @@ fun LudoOnlineWaitingRoomCard(
                         }
                     }
                 }
+                }
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -190,7 +214,7 @@ fun LudoOnlineWaitingRoomCard(
                     )
                 }
 
-                if (isHost) {
+                if (isHost && !room.isTournamentBoard) {
                     Button(
                         enabled = !isBusy,
                         onClick = onCancelAndRefund,
@@ -211,7 +235,14 @@ fun LudoOnlineWaitingRoomCard(
                     onClick = onBackToLobby,
                     modifier = Modifier.heightIn(min = 48.dp)
                 ) {
-                    Text("Back to Ludo Lobby (Keep Table Open)", color = TextSecondary)
+                    Text(
+                        text = if (room.isTournamentBoard) {
+                            "Back to Matches (Board Stays Reserved)"
+                        } else {
+                            "Back to Ludo Lobby (Keep Table Open)"
+                        },
+                        color = TextSecondary
+                    )
                 }
             }
         }
@@ -237,6 +268,7 @@ fun LudoMatchBoardStage(
     winnerName: String?,
     isOnlineMatch: Boolean,
     didLocalUserWin: Boolean?,
+    isTournamentBoard: Boolean = false,
     onRollClick: () -> Unit,
     onTokenSelected: (Int) -> Unit,
     onForfeitOrExit: () -> Unit,
@@ -393,13 +425,28 @@ fun LudoMatchBoardStage(
                     ) {
                         Icon(Icons.Filled.EmojiEvents, contentDescription = null, tint = CoinGold)
                         Text(
-                            text = if (prizePool > 0L) "$winnerName Won ₹$prizePool!" else "$winnerName Won!",
+                            text = when {
+                                isTournamentBoard -> "$winnerName Won Board!"
+                                prizePool > 0L -> "$winnerName Won ₹$prizePool!"
+                                else -> "$winnerName Won!"
+                            },
                             style = MaterialTheme.typography.titleMedium,
                             color = EmeraldWin,
                             fontWeight = FontWeight.ExtraBold
                         )
                     }
-                    if (prizePool > 0L && didLocalUserWin == true) {
+                    if (isTournamentBoard) {
+                        Text(
+                            text = if (didLocalUserWin == true) {
+                                "Result recorded! Admin will verify & credit your Tournament Prize."
+                            } else {
+                                "Board result recorded for Admin verification."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextPrimary,
+                            textAlign = TextAlign.Center
+                        )
+                    } else if (prizePool > 0L && didLocalUserWin == true) {
                         Text(
                             text = "₹$prizePool credited to your Winning Wallet!",
                             style = MaterialTheme.typography.bodySmall,
@@ -430,7 +477,11 @@ fun LudoMatchBoardStage(
                                 .heightIn(min = 48.dp)
                                 .testTag("ludo_back_lobby_after_win")
                         ) {
-                            Text("Ludo Lobby", color = EmeraldWin, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = if (isTournamentBoard) "Back to Matches" else "Ludo Lobby",
+                                color = EmeraldWin,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }

@@ -474,7 +474,7 @@ private fun AuthenticatedArenaShell(
                                         }
                                         val databaseId = app.getString(R.string.firestore_database_id)
                                         val db = FirebaseFirestore.getInstance(databaseId)
-                                        AdminViewModel(FirebattleRepository(db), currentUserId)
+                                        AdminViewModel(FirebattleRepository(db), currentUserId, LudoRepository(db))
                                     }
                                 }
                             )
@@ -487,6 +487,7 @@ private fun AuthenticatedArenaShell(
 
                             val allMatches by adminViewModel.allMatchesState.collectAsStateWithLifecycle()
                             val regsByMatch by adminViewModel.registrationsByMatchState.collectAsStateWithLifecycle()
+                            val tournamentBoardsByMatch by adminViewModel.tournamentBoardsByMatchState.collectAsStateWithLifecycle()
                             val allDeposits by adminViewModel.allDepositsState.collectAsStateWithLifecycle()
                             val allWithdrawals by adminViewModel.allWithdrawalsState.collectAsStateWithLifecycle()
                             val ownerPayouts by adminViewModel.ownerPayoutsState.collectAsStateWithLifecycle()
@@ -499,6 +500,7 @@ private fun AuthenticatedArenaShell(
                             AdminDashboardScreen(
                                 matchesState = allMatches,
                                 registrationsState = regsByMatch,
+                                tournamentBoardsByMatch = tournamentBoardsByMatch,
                                 depositsState = allDeposits,
                                 withdrawalsState = allWithdrawals,
                                 ownerPayoutsState = ownerPayouts,

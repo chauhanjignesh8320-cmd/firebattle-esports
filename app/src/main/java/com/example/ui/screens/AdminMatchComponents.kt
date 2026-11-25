@@ -50,13 +50,17 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.data.model.GameTitle
+import com.example.data.model.LudoRoom
+import com.example.data.model.LudoRoomStatus
 import com.example.data.model.MatchMode
 import com.example.data.model.MatchRegistration
 import com.example.data.model.MatchStatus
 import com.example.data.model.TeamFormat
+import com.example.data.model.TournamentLudoPairing
 import com.example.data.model.TournamentMatch
 import com.example.data.model.defaultRulesForGame
 import com.example.ui.components.StatusBadge
@@ -66,6 +70,7 @@ import com.example.ui.theme.ArenaSlateDark
 import com.example.ui.theme.ArenaSlateSurface
 import com.example.ui.theme.BlazeOrange
 import com.example.ui.theme.BlazeOrangeContainer
+import com.example.ui.theme.CoinGold
 import com.example.ui.theme.CrimsonReject
 import com.example.ui.theme.EmeraldWin
 import com.example.ui.theme.EmeraldWinContainer
@@ -493,6 +498,23 @@ fun CreateTournamentCard(
                     .testTag("admin_match_rules_input")
             )
 
+            if (selectedGame == GameTitle.LUDO.label) {
+                Surface(
+                    color = EmeraldWinContainer,
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, EmeraldWin.copy(alpha = 0.55f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "🎲 In-App Ludo Mode: Players join $selectedFormat slots and play Ludo directly inside our app — no external Room ID or Password needed!",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = EmeraldWin,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+            }
+
             Button(
                 onClick = {
                     onCreateMatch(
@@ -538,6 +560,7 @@ fun CreateTournamentCard(
 fun AdminMatchCard(
     match: TournamentMatch,
     joinedPlayers: List<MatchRegistration>,
+    ludoBoards: List<LudoRoom> = emptyList(),
     isBusy: Boolean,
     onUpdateRoom: (roomId: String, roomPass: String) -> Unit,
     onToggleStatus: () -> Unit,
@@ -548,6 +571,7 @@ fun AdminMatchCard(
     var roomPass by rememberSaveable(match.id, match.roomPass) { mutableStateOf(match.roomPass) }
     val resolvedMode = MatchMode.fromRaw(match.matchMode).label
     val resolvedFormat = TeamFormat.fromRaw(match.teamFormat).label
+    val isLudoTournament = match.game == GameTitle.LUDO.label
 
     val fieldColors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = EmeraldWin,
@@ -656,54 +680,137 @@ fun AdminMatchCard(
                 }
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = roomId,
-                    onValueChange = { roomId = it.take(40) },
-                    label = { Text("Room ID") },
-                    singleLine = true,
-                    colors = fieldColors,
+            if (isLudoTournament) {
+                val boardCount = TournamentLudoPairing.boardCount(match.slots)
+                val teamHalf = TournamentLudoPairing.teamHalf(match.slots).toInt()
+                val boardByNum = remember(ludoBoards) { ludoBoards.associateBy { it.boardNumber.toInt() } }
+                Surface(
+                    color = ArenaObsidian,
                     shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.weight(1f)
-                )
-                OutlinedTextField(
-                    value = roomPass,
-                    onValueChange = { roomPass = it.take(40) },
-                    label = { Text("Room Pass") },
-                    singleLine = true,
-                    colors = fieldColors,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
-                    onClick = { onUpdateRoom(roomId, roomPass) },
-                    enabled = !isBusy,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = EmeraldWin,
-                        contentColor = ArenaObsidian
-                    ),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = 48.dp)
+                    border = BorderStroke(1.dp, EmeraldWin.copy(alpha = 0.45f)),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("UPDATE ROOM", fontWeight = FontWeight.Bold)
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = "In-App Ludo Boards ($boardCount Auto-Paired Board${if (boardCount > 1) "s" else ""})",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = EmeraldWin,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "No Room ID needed — players open their paired 15×15 board right inside Firebattle.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextSecondary
+                        )
+                        for (b in 1..boardCount) {
+                            val room = boardByNum[b]
+                            val st = room?.let { LudoRoomStatus.fromRaw(it.status) }
+                            val statusLabel = when {
+                                st == LudoRoomStatus.COMPLETED && room.winnerIgn.isNotBlank() ->
+                                    "🏆 ${room.winnerIgn} Won"
+                                st == LudoRoomStatus.PLAYING ->
+                                    "Playing: ${room.hostIgn} vs ${room.guestIgn}"
+                                st == LudoRoomStatus.WAITING ->
+                                    "Waiting: ${room.hostIgn} ready"
+                                else -> "Not Started Yet"
+                            }
+                            val statusColor = when (st) {
+                                LudoRoomStatus.COMPLETED -> EmeraldWin
+                                LudoRoomStatus.PLAYING -> BlazeOrange
+                                LudoRoomStatus.WAITING -> CoinGold
+                                else -> TextSecondary
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Board #$b (Slot #$b vs #${b + teamHalf})",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextPrimary,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = statusLabel,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = statusColor,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
                 }
-
                 OutlinedButton(
                     onClick = onToggleStatus,
                     enabled = !isBusy,
                     border = BorderStroke(1.dp, ArenaSlateBorder),
                     shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.heightIn(min = 48.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
                 ) {
                     Text(
-                        text = if (MatchStatus.fromRaw(match.status) == MatchStatus.LIVE) "Complete" else "Reopen",
-                        color = TextPrimary
+                        text = if (MatchStatus.fromRaw(match.status) == MatchStatus.LIVE) "Mark Completed" else "Reopen Match",
+                        color = TextPrimary,
+                        fontWeight = FontWeight.SemiBold
                     )
+                }
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = roomId,
+                        onValueChange = { roomId = it.take(40) },
+                        label = { Text("Room ID") },
+                        singleLine = true,
+                        colors = fieldColors,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = roomPass,
+                        onValueChange = { roomPass = it.take(40) },
+                        label = { Text("Room Pass") },
+                        singleLine = true,
+                        colors = fieldColors,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = { onUpdateRoom(roomId, roomPass) },
+                        enabled = !isBusy,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = EmeraldWin,
+                            contentColor = ArenaObsidian
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp)
+                    ) {
+                        Text("UPDATE ROOM", fontWeight = FontWeight.Bold)
+                    }
+
+                    OutlinedButton(
+                        onClick = onToggleStatus,
+                        enabled = !isBusy,
+                        border = BorderStroke(1.dp, ArenaSlateBorder),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.heightIn(min = 48.dp)
+                    ) {
+                        Text(
+                            text = if (MatchStatus.fromRaw(match.status) == MatchStatus.LIVE) "Complete" else "Reopen",
+                            color = TextPrimary
+                        )
+                    }
                 }
             }
 
@@ -805,6 +912,17 @@ fun AdminMatchCard(
                                         style = MaterialTheme.typography.bodySmall,
                                         color = TextSecondary
                                     )
+                                    val wonBoard = if (isLudoTournament) {
+                                        ludoBoards.firstOrNull { it.winnerUid == reg.userId }
+                                    } else null
+                                    if (wonBoard != null && reg.prizeWon == 0L) {
+                                        Text(
+                                            text = "🏆 Won Board #${wonBoard.boardNumber} In-App — Ready to Pay",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = CoinGold,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
                                     if (reg.prizeWon > 0L) {
                                         Text(
                                             text = buildString {

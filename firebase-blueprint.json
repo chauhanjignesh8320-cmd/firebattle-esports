@@ -543,6 +543,8 @@
         "winnerIgn": { "type": "string", "description": "Winner IGN once completed." },
         "forfeitByUid": { "type": "string", "description": "UID of player who forfeited, if applicable." },
         "prizePaid": { "type": "boolean", "description": "Whether the cash prize has been settled to winner wallet." },
+        "matchId": { "type": "string", "description": "Optional tournament match ID when auto-created from an Admin Ludo 1vs1-4vs4 slot match." },
+        "boardNumber": { "type": "integer", "description": "Optional paired board index (1-4) inside a tournament match." },
         "createdAt": { "type": "string", "format": "date-time", "description": "Room creation timestamp." },
         "updatedAt": { "type": "string", "format": "date-time", "description": "Latest room update timestamp." }
       },

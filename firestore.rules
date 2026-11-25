@@ -166,7 +166,20 @@ service cloud.firestore {
              data.winnerUid is string && data.winnerUid.size() <= 128 &&
              data.winnerIgn is string && data.winnerIgn.size() <= 30 &&
              data.forfeitByUid is string && data.forfeitByUid.size() <= 128 &&
-             data.prizePaid is bool;
+             data.prizePaid is bool &&
+             (!('matchId' in data) || (data.matchId is string && isValidId(data.matchId))) &&
+             (!('boardNumber' in data) || (data.boardNumber is int && data.boardNumber >= 1 && data.boardNumber <= 50));
+    }
+
+    function isTournamentBoardSeat(matchId, boardNum, uid) {
+      return exists(/databases/$(database)/documents/matches/$(matchId)) &&
+             exists(/databases/$(database)/documents/registrations/$(matchId + '_' + uid)) &&
+             get(/databases/$(database)/documents/matches/$(matchId)).data.status == 'LIVE' &&
+             get(/databases/$(database)/documents/matches/$(matchId)).data.game == 'Ludo' &&
+             boardNum >= 1 &&
+             boardNum <= int(get(/databases/$(database)/documents/matches/$(matchId)).data.slots / 2) &&
+             (get(/databases/$(database)/documents/registrations/$(matchId + '_' + uid)).data.slotNumber == boardNum ||
+              get(/databases/$(database)/documents/registrations/$(matchId + '_' + uid)).data.slotNumber == int(get(/databases/$(database)/documents/matches/$(matchId)).data.slots / 2) + boardNum);
     }
 
     match /admins/{adminUid} {
@@ -535,13 +548,15 @@ service cloud.firestore {
                     resource == null ||
                     resource.data.status == 'WAITING' ||
                     resource.data.hostUid == request.auth.uid ||
-                    resource.data.guestUid == request.auth.uid
+                    resource.data.guestUid == request.auth.uid ||
+                    'matchId' in resource.data
                   );
       allow list: if isAdmin() || (
                     isSignedIn() && (
                       resource.data.status == 'WAITING' ||
                       resource.data.hostUid == request.auth.uid ||
-                      resource.data.guestUid == request.auth.uid
+                      resource.data.guestUid == request.auth.uid ||
+                      resource.data.matchId is string
                     )
                   );
       allow create: if isSignedIn() &&
@@ -561,8 +576,13 @@ service cloud.firestore {
                        incoming().forfeitByUid == '' &&
                        incoming().prizePaid == false &&
                        incoming().keys().hasAll(['roomCode', 'hostUid', 'hostIgn', 'guestUid', 'guestIgn', 'entry', 'prizePool', 'status', 'turnSlot', 'diceValue', 'awaitingMove', 'consecutiveSixes', 'hostTokens', 'guestTokens', 'lastAction', 'winnerUid', 'winnerIgn', 'forfeitByUid', 'prizePaid', 'createdAt', 'updatedAt']) &&
-                       incoming().keys().hasOnly(['roomCode', 'hostUid', 'hostIgn', 'guestUid', 'guestIgn', 'entry', 'prizePool', 'status', 'turnSlot', 'diceValue', 'awaitingMove', 'consecutiveSixes', 'hostTokens', 'guestTokens', 'lastAction', 'winnerUid', 'winnerIgn', 'forfeitByUid', 'prizePaid', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['roomCode', 'hostUid', 'hostIgn', 'guestUid', 'guestIgn', 'entry', 'prizePool', 'status', 'turnSlot', 'diceValue', 'awaitingMove', 'consecutiveSixes', 'hostTokens', 'guestTokens', 'lastAction', 'winnerUid', 'winnerIgn', 'forfeitByUid', 'prizePaid', 'matchId', 'boardNumber', 'createdAt', 'updatedAt']) &&
                        isValidLudoRoom(incoming()) &&
+                       ((!('matchId' in incoming()) && !('boardNumber' in incoming())) ||
+                        ('matchId' in incoming() && 'boardNumber' in incoming() &&
+                         roomId == 'tm_' + incoming().matchId + '_b' + string(incoming().boardNumber) &&
+                         incoming().entry == 0 && incoming().prizePool == 0 &&
+                         isTournamentBoardSeat(incoming().matchId, incoming().boardNumber, request.auth.uid))) &&
                        incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
                        incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
                        (incoming().entry == 0 ||
@@ -575,10 +595,13 @@ service cloud.firestore {
                        incoming().hostIgn == existing().hostIgn &&
                        incoming().entry == existing().entry &&
                        incoming().prizePool == existing().prizePool &&
+                       incoming().get('matchId', '') == existing().get('matchId', '') &&
+                       incoming().get('boardNumber', 0) == existing().get('boardNumber', 0) &&
                        incoming().createdAt == existing().createdAt &&
                        incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
                        (
                          (existing().status == 'WAITING' &&
+                          !('matchId' in existing()) &&
                           incoming().status == 'CANCELLED' &&
                           request.auth.uid == existing().hostUid &&
                           incoming().guestUid == '' &&
@@ -594,6 +617,8 @@ service cloud.firestore {
                           incoming().guestIgn.size() >= 2 &&
                           incoming().winnerUid == '' &&
                           incoming().prizePaid == false &&
+                          (!('matchId' in existing()) ||
+                           isTournamentBoardSeat(existing().matchId, existing().boardNumber, request.auth.uid)) &&
                           incoming().diff(existing()).affectedKeys().hasOnly(['guestUid', 'guestIgn', 'status', 'turnSlot', 'diceValue', 'awaitingMove', 'consecutiveSixes', 'lastAction', 'updatedAt']) &&
                           (existing().entry == 0 ||
                            getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.wallet == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.wallet - existing().entry)) ||

@@ -96,6 +96,7 @@ import com.example.data.model.AdminTab
 import com.example.data.model.AppInstall
 import com.example.data.model.AppSettings
 import com.example.data.model.DepositRequest
+import com.example.data.model.LudoRoom
 import com.example.data.model.MatchRegistration
 import com.example.data.model.OwnerPayout
 import com.example.data.model.TournamentMatch
@@ -129,6 +130,7 @@ import com.example.ui.viewmodel.AdminSettingsDraft
 fun AdminDashboardScreen(
     matchesState: UiState<List<TournamentMatch>>,
     registrationsState: UiState<Map<String, List<MatchRegistration>>>,
+    tournamentBoardsByMatch: Map<String, List<LudoRoom>> = emptyMap(),
     depositsState: UiState<List<DepositRequest>>,
     withdrawalsState: UiState<List<WithdrawalRequest>>,
     ownerPayoutsState: UiState<List<OwnerPayout>>,
@@ -231,6 +233,7 @@ fun AdminDashboardScreen(
                         selectedTab = selectedTab,
                         matchesState = matchesState,
                         registrationsState = registrationsState,
+                        tournamentBoardsByMatch = tournamentBoardsByMatch,
                         depositsState = depositsState,
                         withdrawalsState = withdrawalsState,
                         ownerPayoutsState = ownerPayoutsState,
@@ -297,6 +300,7 @@ fun AdminDashboardScreen(
                     selectedTab = selectedTab,
                     matchesState = matchesState,
                     registrationsState = registrationsState,
+                    tournamentBoardsByMatch = tournamentBoardsByMatch,
                     depositsState = depositsState,
                     withdrawalsState = withdrawalsState,
                     ownerPayoutsState = ownerPayoutsState,
@@ -487,6 +491,7 @@ private fun AdminTabBody(
     selectedTab: AdminTab,
     matchesState: UiState<List<TournamentMatch>>,
     registrationsState: UiState<Map<String, List<MatchRegistration>>>,
+    tournamentBoardsByMatch: Map<String, List<LudoRoom>>,
     depositsState: UiState<List<DepositRequest>>,
     withdrawalsState: UiState<List<WithdrawalRequest>>,
     ownerPayoutsState: UiState<List<OwnerPayout>>,
@@ -615,7 +620,7 @@ private fun AdminTabBody(
                             item {
                                 EmptyArenaState(
                                     title = "No Matches Published",
-                                    subtitle = "Create Lone Wolf, Clash Squad, or Custom rooms above."
+                                    subtitle = "Create Ludo 1vs1-4vs4, Lone Wolf, Clash Squad, or Custom rooms above."
                                 )
                             }
                         } else {
@@ -623,6 +628,7 @@ private fun AdminTabBody(
                                 AdminMatchCard(
                                     match = match,
                                     joinedPlayers = regMap[match.id] ?: emptyList(),
+                                    ludoBoards = tournamentBoardsByMatch[match.id].orEmpty(),
                                     isBusy = isBusy,
                                     onUpdateRoom = { rid, rpass -> onUpdateRoom(match.id, rid, rpass) },
                                     onToggleStatus = { onToggleMatchStatus(match) },

@@ -2034,6 +2034,170 @@ test("Ludo Slot Tournaments (1vs1, 2vs2, 3vs3, 4vs4): Admin creation and player 
   await assertSucceeds(bobJoin.commit());
 });
 
+test("Tournament-linked In-App Ludo Boards enforce exact slot pairing and block outsiders", async () => {
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID, { email: "alice@test.com", email_verified: true }).firestore();
+  const bobDb = testEnv.authenticatedContext(BOB_UID, { email: "bob@test.com", email_verified: true }).firestore();
+  const charlieDb = testEnv.authenticatedContext("charlie_789", { email: "charlie@test.com", email_verified: true }).firestore();
+
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await db.collection("matches").doc("ludo_2v2_arena").set({
+      title: "Ludo 2vs2 Arena #1",
+      game: "Ludo",
+      matchMode: "Ludo",
+      teamFormat: "2vs2",
+      matchTime: "Tonight 9:00 PM",
+      mapName: "Classic Board",
+      entry: 25,
+      perKill: 0,
+      prize: 90,
+      slots: 4,
+      joinedCount: 3,
+      takenSlots: [1, 2, 3],
+      roomId: "",
+      roomPass: "",
+      status: "LIVE",
+      createdBy: ADMIN_UID,
+      createdAt: pastDate(10000),
+      updatedAt: pastDate(10000),
+    });
+    // Alice = Slot 1 (Board 1 Team 1), Bob = Slot 3 (Board 1 Team 2), Charlie = Slot 2 (Board 2 Team 1)
+    await db.collection("registrations").doc(`ludo_2v2_arena_${ALICE_UID}`).set({
+      matchId: "ludo_2v2_arena",
+      userId: ALICE_UID,
+      ign: "AliceT1",
+      gameUid: "111",
+      phone: "9876543210",
+      entryPaid: 25,
+      slotNumber: 1,
+      createdAt: pastDate(9000),
+    });
+    await db.collection("registrations").doc(`ludo_2v2_arena_${BOB_UID}`).set({
+      matchId: "ludo_2v2_arena",
+      userId: BOB_UID,
+      ign: "BobT2",
+      gameUid: "222",
+      phone: "9876543211",
+      entryPaid: 25,
+      slotNumber: 3,
+      createdAt: pastDate(9000),
+    });
+    await db.collection("registrations").doc("ludo_2v2_arena_charlie_789").set({
+      matchId: "ludo_2v2_arena",
+      userId: "charlie_789",
+      ign: "CharlieT1",
+      gameUid: "333",
+      phone: "9876543212",
+      entryPaid: 25,
+      slotNumber: 2,
+      createdAt: pastDate(9000),
+    });
+  });
+
+  // Charlie (Slot 2 -> Board 2) CANNOT open or join Board 1
+  await assertFails(
+    charlieDb.collection("ludoRooms").doc("tm_ludo_2v2_arena_b1").set({
+      roomCode: "TBL01",
+      hostUid: "charlie_789",
+      hostIgn: "CharlieT1",
+      guestUid: "",
+      guestIgn: "",
+      entry: 0,
+      prizePool: 0,
+      status: "WAITING",
+      turnSlot: 0,
+      diceValue: 0,
+      awaitingMove: false,
+      consecutiveSixes: 0,
+      hostTokens: [0, 0, 0, 0],
+      guestTokens: [0, 0, 0, 0],
+      lastAction: "Opened",
+      winnerUid: "",
+      winnerIgn: "",
+      forfeitByUid: "",
+      prizePaid: false,
+      matchId: "ludo_2v2_arena",
+      boardNumber: 1,
+      createdAt: pastDate(4000),
+      updatedAt: pastDate(4000),
+    })
+  );
+
+  // Alice (Slot 1 -> Board 1) auto-creates Board 1 deterministically
+  await assertSucceeds(
+    aliceDb.collection("ludoRooms").doc("tm_ludo_2v2_arena_b1").set({
+      roomCode: "TBL01",
+      hostUid: ALICE_UID,
+      hostIgn: "AliceT1",
+      guestUid: "",
+      guestIgn: "",
+      entry: 0,
+      prizePool: 0,
+      status: "WAITING",
+      turnSlot: 0,
+      diceValue: 0,
+      awaitingMove: false,
+      consecutiveSixes: 0,
+      hostTokens: [0, 0, 0, 0],
+      guestTokens: [0, 0, 0, 0],
+      lastAction: "Board #1 ready! Waiting for Slot #3.",
+      winnerUid: "",
+      winnerIgn: "",
+      forfeitByUid: "",
+      prizePaid: false,
+      matchId: "ludo_2v2_arena",
+      boardNumber: 1,
+      createdAt: pastDate(4000),
+      updatedAt: pastDate(4000),
+    })
+  );
+
+  // Alice cannot cancel a tournament board
+  await assertFails(
+    aliceDb.collection("ludoRooms").doc("tm_ludo_2v2_arena_b1").update({
+      status: "CANCELLED",
+      lastAction: "Cancel",
+      updatedAt: pastDate(3500),
+    })
+  );
+
+  // Charlie (Slot 2) CANNOT join Alice's Board 1 (Slot 1 vs Slot 3)
+  await assertFails(
+    charlieDb.collection("ludoRooms").doc("tm_ludo_2v2_arena_b1").update({
+      guestUid: "charlie_789",
+      guestIgn: "CharlieT1",
+      status: "PLAYING",
+      turnSlot: 0,
+      diceValue: 0,
+      awaitingMove: false,
+      consecutiveSixes: 0,
+      lastAction: "Wrong seat",
+      updatedAt: pastDate(3000),
+    })
+  );
+
+  // Bob (Slot 3 -> Board 1) joins Alice's Board 1 cleanly
+  await assertSucceeds(
+    bobDb.collection("ludoRooms").doc("tm_ludo_2v2_arena_b1").update({
+      guestUid: BOB_UID,
+      guestIgn: "BobT2",
+      status: "PLAYING",
+      turnSlot: 0,
+      diceValue: 0,
+      awaitingMove: false,
+      consecutiveSixes: 0,
+      lastAction: "BobT2 joined Board #1! AliceT1 rolls first.",
+      updatedAt: pastDate(2500),
+    })
+  );
+
+  // Players can query live scoreboard for the match via where("matchId", "==", matchId)
+  await assertSucceeds(
+    charlieDb.collection("ludoRooms").where("matchId", "==", "ludo_2v2_arena").get()
+  );
+});
+
+
 
 
 

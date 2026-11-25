@@ -31,6 +31,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Lock
@@ -72,10 +73,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.R
+import com.example.data.model.GameTitle
+import com.example.data.model.LudoRoom
+import com.example.data.model.LudoRoomStatus
 import com.example.data.model.MatchMode
 import com.example.data.model.MatchRegistration
 import com.example.data.model.MatchStatus
 import com.example.data.model.TeamFormat
+import com.example.data.model.TournamentLudoPairing
 import com.example.data.model.TournamentMatch
 import com.example.data.model.parseMatchRuleEntries
 import com.example.ui.theme.ArenaObsidian
@@ -105,8 +110,10 @@ fun MatchRoomDetailsDialog(
     myRegistration: MatchRegistration?,
     allMyRegistrations: List<MatchRegistration>,
     matchesById: Map<String, TournamentMatch>,
+    matchBoards: List<LudoRoom> = emptyList(),
     onDismiss: () -> Unit,
     onRequestJoin: () -> Unit,
+    onPlayLudoBoard: ((MatchRegistration) -> Unit)? = null,
     onCopyFeedback: (String) -> Unit
 ) {
     val clipboard = LocalClipboardManager.current
@@ -120,6 +127,13 @@ fun MatchRoomDetailsDialog(
     val resolvedMode = MatchMode.fromRaw(match.matchMode).label
     val resolvedFormat = TeamFormat.fromRaw(match.teamFormat).label
     val bookedSlot = myRegistration?.slotNumber ?: 0L
+    val isLudoTournament = match.game == GameTitle.LUDO.label
+    val totalBoards = if (isLudoTournament) TournamentLudoPairing.boardCount(match.slots) else 0
+    val teamHalf = if (isLudoTournament) TournamentLudoPairing.teamHalf(match.slots).toInt() else 0
+    val myBoardNum = if (isLudoTournament && bookedSlot > 0L) {
+        TournamentLudoPairing.boardForSlot(bookedSlot, match.slots).toInt()
+    } else 0
+    val boardByNum = remember(matchBoards) { matchBoards.associateBy { it.boardNumber.toInt() } }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -194,7 +208,11 @@ fun MatchRoomDetailsDialog(
                 Spacer(modifier = Modifier.height(6.dp))
 
                 Text(
-                    text = stringResource(R.string.room_notice_time),
+                    text = if (isLudoTournament) {
+                        "In-App $resolvedFormat Ludo Tournament — No external Room ID or Password needed!"
+                    } else {
+                        stringResource(R.string.room_notice_time)
+                    },
                     style = MaterialTheme.typography.labelLarge,
                     color = RoomNoticePurple,
                     fontWeight = FontWeight.Bold,
@@ -202,7 +220,11 @@ fun MatchRoomDetailsDialog(
                 )
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
-                    text = stringResource(R.string.room_notice_slot),
+                    text = if (isLudoTournament) {
+                        "Paired 1v1 Boards ($totalBoards Board${if (totalBoards > 1) "s" else ""}): Slot #1 vs Slot #${teamHalf + 1}${if (totalBoards > 1) ", Slot #2 vs Slot #${teamHalf + 2}..." else ""} directly inside Firebattle."
+                    } else {
+                        stringResource(R.string.room_notice_slot)
+                    },
                     style = MaterialTheme.typography.labelLarge,
                     color = RoomNoticePurple,
                     fontWeight = FontWeight.Bold,
@@ -269,9 +291,110 @@ fun MatchRoomDetailsDialog(
                             .fillMaxWidth()
                             .padding(horizontal = 12.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        if (alreadyJoined) {
+                        if (isLudoTournament) {
+                            Surface(
+                                color = ArenaObsidian.copy(alpha = 0.84f),
+                                shape = RoundedCornerShape(14.dp),
+                                border = BorderStroke(1.dp, EmeraldWin.copy(alpha = 0.55f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = "IN-APP LUDO BOARDS ($resolvedFormat)",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = BlazeOrange,
+                                        fontWeight = FontWeight.ExtraBold
+                                    )
+                                    for (b in 1..totalBoards) {
+                                        val room = boardByNum[b]
+                                        val st = room?.let { LudoRoomStatus.fromRaw(it.status) }
+                                        val isMyBoard = myBoardNum == b
+                                        val statusText = when {
+                                            st == LudoRoomStatus.COMPLETED && room.winnerIgn.isNotBlank() ->
+                                                "🏆 ${room.winnerIgn} Won"
+                                            st == LudoRoomStatus.PLAYING ->
+                                                "LIVE (${room.hostIgn} vs ${room.guestIgn})"
+                                            st == LudoRoomStatus.WAITING ->
+                                                "Waiting (${room.hostIgn})"
+                                            else -> "Ready to Play"
+                                        }
+                                        val statusColor = when (st) {
+                                            LudoRoomStatus.COMPLETED -> EmeraldWin
+                                            LudoRoomStatus.PLAYING -> BlazeOrange
+                                            LudoRoomStatus.WAITING -> RoomNoticePurple
+                                            else -> TextSecondary
+                                        }
+                                        Surface(
+                                            color = if (isMyBoard) EmeraldWinContainer.copy(alpha = 0.6f) else ArenaSlateDark.copy(alpha = 0.7f),
+                                            shape = RoundedCornerShape(8.dp),
+                                            border = BorderStroke(1.dp, if (isMyBoard) EmeraldWin else ArenaSlateBorder),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = if (isMyBoard) {
+                                                        "Board #$b (You: #$bookedSlot)"
+                                                    } else {
+                                                        "Board #$b (#$b vs #${b + teamHalf})"
+                                                    },
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    color = if (isMyBoard) EmeraldWin else TextPrimary,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                Text(
+                                                    text = statusText,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = statusColor,
+                                                    fontWeight = FontWeight.Bold,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (alreadyJoined && !isCompleted && myRegistration != null && onPlayLudoBoard != null) {
+                                Button(
+                                    onClick = { onPlayLudoBoard(myRegistration) },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = BlazeOrange,
+                                        contentColor = Color.White
+                                    ),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 50.dp)
+                                        .testTag("view_more_play_ludo_button")
+                                ) {
+                                    Icon(Icons.Filled.Casino, contentDescription = null, modifier = Modifier.size(20.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = if (myBoardNum > 0) "PLAY IN-APP LUDO (BOARD #$myBoardNum)" else "PLAY IN-APP LUDO",
+                                        fontWeight = FontWeight.ExtraBold
+                                    )
+                                }
+                            } else if (!alreadyJoined) {
+                                Text(
+                                    text = "Join & select your Slot # to unlock your In-App Ludo Board.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextSecondary,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        } else if (alreadyJoined) {
                             val roomIdDisplay = match.roomId.ifBlank { "WAIT FOR ROOM" }
                             val roomPassDisplay = match.roomPass.ifBlank { "WAIT FOR PASS" }
 
@@ -359,6 +482,9 @@ fun MatchRoomDetailsDialog(
                 // Purple Live Status Banner
                 val bannerHeadline = when {
                     isCompleted -> "Match Completed"
+                    isLudoTournament && alreadyJoined -> "In-App Ludo Board #$myBoardNum Ready!"
+                    isLudoTournament && isFull -> "All Slots Full (${match.joinedCount}/${match.slots})"
+                    isLudoTournament -> "Join $resolvedFormat Ludo (${match.joinedCount}/${match.slots})"
                     alreadyJoined && match.roomId.isNotBlank() -> "Room ID & Password Ready!"
                     alreadyJoined && bookedSlot > 0L -> "Confirmed • Slot #$bookedSlot"
                     alreadyJoined -> "Entry Confirmed"
@@ -368,6 +494,10 @@ fun MatchRoomDetailsDialog(
                 val bannerSubtext = when {
                     isCompleted && match.winnerSummary.isNotBlank() -> "Winners: ${match.winnerSummary}"
                     isCompleted -> "Match finished. Check My Entries or Results for payout details."
+                    isLudoTournament && alreadyJoined ->
+                        "Tap PLAY LUDO below to enter Board #$myBoardNum inside the app — opponent joins automatically."
+                    isLudoTournament ->
+                        "Select your Slot #1..#${match.slots} & play Ludo directly inside our app."
                     alreadyJoined && match.roomId.isNotBlank() ->
                         "Hurry Up! Match is starting soon — join in game and sit in Slot #${if (bookedSlot > 0L) bookedSlot else "?"}."
                     alreadyJoined ->
@@ -398,7 +528,7 @@ fun MatchRoomDetailsDialog(
                     )
                 }
 
-                // Row 2: MY ENTRIES | JOINED / JOIN NOW
+                // Row 2: MY ENTRIES | JOINED / JOIN NOW / PLAY LUDO
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -419,8 +549,10 @@ fun MatchRoomDetailsDialog(
                             .fillMaxHeight()
                             .padding(vertical = 8.dp)
                     )
+                    val canPlayDirectLudo = isLudoTournament && alreadyJoined && !isCompleted && myRegistration != null && onPlayLudoBoard != null
                     val rightLabel = when {
                         isCompleted -> "COMPLETED"
+                        canPlayDirectLudo -> "PLAY LUDO"
                         alreadyJoined -> "ALREADY JOINED"
                         isFull -> "SLOTS FULL"
                         else -> "JOIN MATCH (₹${match.entry})"
@@ -428,7 +560,9 @@ fun MatchRoomDetailsDialog(
                     BottomDockSegmentButton(
                         text = rightLabel,
                         onClick = {
-                            if (!alreadyJoined && !isCompleted && !isFull) {
+                            if (canPlayDirectLudo && myRegistration != null) {
+                                onPlayLudoBoard?.invoke(myRegistration)
+                            } else if (!alreadyJoined && !isCompleted && !isFull) {
                                 onRequestJoin()
                             } else if (alreadyJoined && match.roomId.isNotBlank()) {
                                 clipboard.setText(AnnotatedString(match.roomId))
@@ -449,14 +583,25 @@ fun MatchRoomDetailsDialog(
             onDismissRequest = { showHowToJoinDialog = false },
             containerColor = ArenaSlateDark,
             title = {
-                Text("How To Join Custom Room", color = TextPrimary, fontWeight = FontWeight.Bold)
+                Text(
+                    text = if (isLudoTournament) "How To Play In-App Ludo" else "How To Join Custom Room",
+                    color = TextPrimary,
+                    fontWeight = FontWeight.Bold
+                )
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("1. Join match in Firebattle and choose your Slot # (e.g. Slot #1) with your exact ${match.game} In-Game Name.", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-                    Text("2. 4–6 minutes before match time, Room ID & Password will appear on this screen.", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-                    Text("3. Tap Copy on Room ID & Password, open Custom Room in game, and enter them.", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-                    Text("4. Sit ONLY in your booked Slot #. Unknown IGNs or wrong-slot players will be kicked by Admin.", style = MaterialTheme.typography.bodySmall, color = BlazeOrange, fontWeight = FontWeight.SemiBold)
+                    if (isLudoTournament) {
+                        Text("1. Join the Ludo tournament and pick any available Slot #1..#${match.slots}.", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                        Text("2. Tap PLAY LUDO — no external app or Room Code needed!", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                        Text("3. Your slot automatically opens your paired 15×15 live Ludo board inside Firebattle against the opposite slot.", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                        Text("4. Finish the match on the in-app board; the board winner is automatically recorded for Admin prize payout.", style = MaterialTheme.typography.bodySmall, color = BlazeOrange, fontWeight = FontWeight.SemiBold)
+                    } else {
+                        Text("1. Join match in Firebattle and choose your Slot # (e.g. Slot #1) with your exact ${match.game} In-Game Name.", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                        Text("2. 4–6 minutes before match time, Room ID & Password will appear on this screen.", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                        Text("3. Tap Copy on Room ID & Password, open Custom Room in game, and enter them.", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                        Text("4. Sit ONLY in your booked Slot #. Unknown IGNs or wrong-slot players will be kicked by Admin.", style = MaterialTheme.typography.bodySmall, color = BlazeOrange, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             },
             confirmButton = {

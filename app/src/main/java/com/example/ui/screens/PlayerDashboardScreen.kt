@@ -95,10 +95,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.R
 import com.example.data.model.AppSettings
 import com.example.data.model.DepositRequest
 import com.example.data.model.GameTitle
+import com.example.data.model.LudoRoom
 import com.example.data.model.MatchMode
 import com.example.data.model.MatchRegistration
 import com.example.data.model.MatchStatus
@@ -176,6 +178,29 @@ fun PlayerDashboardScreen(
     var pendingJoinMatch by remember { mutableStateOf<TournamentMatch?>(null) }
     var inspectedMatch by remember { mutableStateOf<TournamentMatch?>(null) }
 
+    LaunchedEffect(inspectedMatch?.id, inspectedMatch?.game) {
+        val m = inspectedMatch
+        ludoViewModel?.setInspectedMatchId(if (m != null && m.game == GameTitle.LUDO.label) m.id else null)
+    }
+
+    val inspectedBoards = if (ludoViewModel != null) {
+        val boardsState by ludoViewModel.inspectedMatchBoardsState.collectAsStateWithLifecycle()
+        (boardsState as? UiState.Success)?.data.orEmpty()
+    } else {
+        emptyList()
+    }
+
+    val playLudoBoardAction: (TournamentMatch, MatchRegistration) -> Unit = { match, reg ->
+        if (!hasInternetConnection(context)) {
+            onCopyFeedback("Turn on internet to open the live Ludo board.")
+        } else {
+            ludoViewModel?.playTournamentMatch(match, reg, profile) {
+                inspectedMatch = null
+                onSetShowLudoArena(true)
+            }
+        }
+    }
+
     LaunchedEffect(alertsDialogTrigger) {
         if (alertsDialogTrigger > 0) {
             showAlertsDialog = true
@@ -208,6 +233,7 @@ fun PlayerDashboardScreen(
             isMatchBusy = isBusy,
             onRequestJoinMatch = { pendingJoinMatch = it },
             onInspectMatch = { inspectedMatch = it },
+            onPlayLudoMatch = playLudoBoardAction,
             onBackToHome = { onSetShowLudoArena(false) },
             onOpenWallet = {
                 onSetShowLudoArena(false)
@@ -276,6 +302,7 @@ fun PlayerDashboardScreen(
                         onEditProfile = { showEditProfileDialog = true },
                         onRequestJoin = { pendingJoinMatch = it },
                         onInspectMatch = { inspectedMatch = it },
+                        onPlayLudoMatch = playLudoBoardAction,
                         onSubmitDeposit = onSubmitDeposit,
                         onStartPhonePeCheckout = onStartPhonePeCheckout,
                         onVerifyPhonePeOrder = onVerifyPhonePeOrder,
@@ -345,6 +372,7 @@ fun PlayerDashboardScreen(
                     onEditProfile = { showEditProfileDialog = true },
                     onRequestJoin = { pendingJoinMatch = it },
                     onInspectMatch = { inspectedMatch = it },
+                    onPlayLudoMatch = playLudoBoardAction,
                     onSubmitDeposit = onSubmitDeposit,
                     onStartPhonePeCheckout = onStartPhonePeCheckout,
                     onVerifyPhonePeOrder = onVerifyPhonePeOrder,
@@ -476,12 +504,14 @@ fun PlayerDashboardScreen(
             myRegistration = myRegs.firstOrNull { it.matchId == activeInspectedMatch.id },
             allMyRegistrations = myRegs,
             matchesById = allMatchesById,
+            matchBoards = inspectedBoards,
             onDismiss = { inspectedMatch = null },
             onRequestJoin = {
                 val target = activeInspectedMatch
                 inspectedMatch = null
                 pendingJoinMatch = target
             },
+            onPlayLudoBoard = { myReg -> playLudoBoardAction(activeInspectedMatch, myReg) },
             onCopyFeedback = onCopyFeedback
         )
     }
@@ -519,6 +549,7 @@ private fun PlayerTabContent(
     onEditProfile: () -> Unit,
     onRequestJoin: (TournamentMatch) -> Unit,
     onInspectMatch: (TournamentMatch) -> Unit,
+    onPlayLudoMatch: (TournamentMatch, MatchRegistration) -> Unit = { _, _ -> },
     onSubmitDeposit: (String, String, () -> Unit) -> Unit,
     onStartPhonePeCheckout: ((Long, (String, String) -> Unit, () -> Unit) -> Unit)? = null,
     onVerifyPhonePeOrder: ((String, (String, String) -> Unit) -> Unit)? = null,
@@ -544,6 +575,7 @@ private fun PlayerTabContent(
             onEditProfile = onEditProfile,
             onRequestJoin = onRequestJoin,
             onInspectMatch = onInspectMatch,
+            onPlayLudoMatch = onPlayLudoMatch,
             onCopyFeedback = onCopyFeedback,
             modifier = modifier
         )
@@ -681,6 +713,7 @@ private fun TournamentsSection(
     onEditProfile: () -> Unit,
     onRequestJoin: (TournamentMatch) -> Unit,
     onInspectMatch: (TournamentMatch) -> Unit,
+    onPlayLudoMatch: (TournamentMatch, MatchRegistration) -> Unit = { _, _ -> },
     onCopyFeedback: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -891,7 +924,8 @@ private fun TournamentsSection(
                                 myRegistration = myRegByMatch[match.id],
                                 isBusy = isBusy,
                                 onJoinClick = { onRequestJoin(match) },
-                                onViewMoreClick = { onInspectMatch(match) }
+                                onViewMoreClick = { onInspectMatch(match) },
+                                onPlayLudoClick = { reg -> onPlayLudoMatch(match, reg) }
                             )
                         }
                     }
@@ -908,7 +942,8 @@ internal fun TournamentMatchCard(
     myRegistration: MatchRegistration?,
     isBusy: Boolean,
     onJoinClick: () -> Unit,
-    onViewMoreClick: () -> Unit
+    onViewMoreClick: () -> Unit,
+    onPlayLudoClick: ((MatchRegistration) -> Unit)? = null
 ) {
     val isFull = match.joinedCount >= match.slots
     val slotsRemaining = (match.slots - match.joinedCount).coerceAtLeast(0L)
@@ -1061,9 +1096,15 @@ internal fun TournamentMatchCard(
                     }
 
                     val isCompleted = MatchStatus.fromRaw(match.status) == MatchStatus.COMPLETED
+                    val canPlayInAppLudo = match.game == GameTitle.LUDO.label &&
+                        alreadyJoined &&
+                        !isCompleted &&
+                        myRegistration != null &&
+                        onPlayLudoClick != null
                     val actionLabel = when {
                         isCompleted && (myRegistration?.prizeWon ?: 0L) > 0L -> "WON ₹${myRegistration?.prizeWon}"
                         isCompleted -> "RESULTS"
+                        canPlayInAppLudo -> "PLAY LUDO"
                         alreadyJoined && myRegistration != null && myRegistration.slotNumber > 0L ->
                             "SLOT #${myRegistration.slotNumber}"
                         alreadyJoined -> "JOINED"
@@ -1071,35 +1112,60 @@ internal fun TournamentMatchCard(
                         else -> "JOIN"
                     }
                     val actionColor = when {
+                        canPlayInAppLudo -> BlazeOrange
                         alreadyJoined -> EmeraldWin
                         isCompleted || isFull -> ArenaInkMuted
                         else -> ContestPurple
                     }
 
-                    OutlinedButton(
-                        onClick = {
-                            if (alreadyJoined || isCompleted || isFull) {
-                                onViewMoreClick()
-                            } else {
-                                onJoinClick()
-                            }
-                        },
-                        enabled = !isBusy,
-                        border = BorderStroke(1.2.dp, actionColor),
-                        shape = RoundedCornerShape(6.dp),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
-                        modifier = Modifier
-                            .widthIn(min = 104.dp)
-                            .heightIn(min = 40.dp)
-                            .testTag("join_match_button_${match.id}")
-                    ) {
-                        Text(
-                            text = actionLabel,
-                            color = actionColor,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                    if (canPlayInAppLudo) {
+                        Button(
+                            onClick = { myRegistration?.let { onPlayLudoClick?.invoke(it) } },
+                            enabled = !isBusy,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = BlazeOrange,
+                                contentColor = ArenaWhiteCard
+                            ),
+                            shape = RoundedCornerShape(6.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+                            modifier = Modifier
+                                .widthIn(min = 108.dp)
+                                .heightIn(min = 40.dp)
+                                .testTag("join_match_button_${match.id}")
+                        ) {
+                            Text(
+                                text = actionLabel,
+                                fontWeight = FontWeight.ExtraBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    } else {
+                        OutlinedButton(
+                            onClick = {
+                                if (alreadyJoined || isCompleted || isFull) {
+                                    onViewMoreClick()
+                                } else {
+                                    onJoinClick()
+                                }
+                            },
+                            enabled = !isBusy,
+                            border = BorderStroke(1.2.dp, actionColor),
+                            shape = RoundedCornerShape(6.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+                            modifier = Modifier
+                                .widthIn(min = 104.dp)
+                                .heightIn(min = 40.dp)
+                                .testTag("join_match_button_${match.id}")
+                        ) {
+                            Text(
+                                text = actionLabel,
+                                color = actionColor,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             }

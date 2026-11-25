@@ -88,6 +88,7 @@ fun LudoArenaScreen(
     isMatchBusy: Boolean = false,
     onRequestJoinMatch: (TournamentMatch) -> Unit,
     onInspectMatch: (TournamentMatch) -> Unit,
+    onPlayLudoMatch: (TournamentMatch, MatchRegistration) -> Unit,
     onBackToHome: () -> Unit,
     onOpenWallet: () -> Unit,
     onCopyFeedback: (String) -> Unit,
@@ -151,10 +152,13 @@ fun LudoArenaScreen(
                         tint = TextPrimary
                     )
                 }
+                val activeRoomObj = (activeRoomState as? UiState.Success)?.data
                 Text(
                     text = when {
                         localState.mode == LudoPlayMode.VS_BOT -> "Ludo vs Smart Bot"
                         localState.mode == LudoPlayMode.PASS_AND_PLAY -> "Ludo Pass & Play"
+                        isOnlineActive && activeRoomObj?.isTournamentBoard == true ->
+                            "Board #${activeRoomObj.boardNumber} • Ludo"
                         isOnlineActive -> "In-App Ludo Board"
                         showBoardHub -> "Play In-App Board"
                         else -> "FIREBATTLE LUDO"
@@ -333,7 +337,11 @@ fun LudoArenaScreen(
                                     val winnerName = room.winnerIgn.takeIf { status == LudoRoomStatus.COMPLETED && it.isNotBlank() }
 
                                     LudoMatchBoardStage(
-                                        modeBadge = if (room.entry > 0L) "1v1 ₹${room.entry}" else "1v1 ONLINE FREE",
+                                        modeBadge = when {
+                                            room.isTournamentBoard -> "BOARD #${room.boardNumber}"
+                                            room.entry > 0L -> "1v1 ₹${room.entry}"
+                                            else -> "1v1 ONLINE FREE"
+                                        },
                                         hostName = room.hostIgn.ifBlank { "Host" },
                                         guestName = room.guestIgn.ifBlank { "Opponent" },
                                         isBotOpponent = false,
@@ -350,6 +358,7 @@ fun LudoArenaScreen(
                                         winnerName = winnerName,
                                         isOnlineMatch = true,
                                         didLocalUserWin = winnerName != null && room.winnerUid == profile.userId,
+                                        isTournamentBoard = room.isTournamentBoard,
                                         onRollClick = {
                                             if (!hasInternetConnection(context)) {
                                                 onCopyFeedback("No internet connection.")
@@ -420,11 +429,12 @@ fun LudoArenaScreen(
                 myRegByMatch = myRegByMatch,
                 feedFilter = feedFilter,
                 formatFilter = formatFilter,
-                isMatchBusy = isMatchBusy,
+                isMatchBusy = isMatchBusy || isBusy,
                 onSelectFeed = { feedFilter = it },
                 onSelectFormat = { formatFilter = it },
                 onJoinMatchClick = onRequestJoinMatch,
                 onViewMoreMatchClick = onInspectMatch,
+                onPlayLudoMatch = onPlayLudoMatch,
                 onOpenBoardHub = { showBoardHub = true }
             )
         }
@@ -444,6 +454,7 @@ private fun LudoSlotsTournamentFeed(
     onSelectFormat: (String) -> Unit,
     onJoinMatchClick: (TournamentMatch) -> Unit,
     onViewMoreMatchClick: (TournamentMatch) -> Unit,
+    onPlayLudoMatch: (TournamentMatch, MatchRegistration) -> Unit,
     onOpenBoardHub: () -> Unit
 ) {
     val activeSource = if (feedFilter == "Results") completedLudoMatches else liveLudoMatches
@@ -541,7 +552,7 @@ private fun LudoSlotsTournamentFeed(
                             feedFilter == "Results" -> "No Ludo Results Yet"
                             else -> "No Ludo Slots Open Yet"
                         },
-                        subtitle = "Admin can publish Ludo 1vs1, 2vs2, 3vs3 & 4vs4 slot matches from Admin Panel, or try our In-App Ludo Board below."
+                        subtitle = "Admin can publish Ludo 1vs1, 2vs2, 3vs3 & 4vs4 slot matches from Admin Panel — join a slot and play directly inside our app!"
                     )
                 }
             } else {
@@ -552,7 +563,8 @@ private fun LudoSlotsTournamentFeed(
                         myRegistration = myRegByMatch[match.id],
                         isBusy = isMatchBusy,
                         onJoinClick = { onJoinMatchClick(match) },
-                        onViewMoreClick = { onViewMoreMatchClick(match) }
+                        onViewMoreClick = { onViewMoreMatchClick(match) },
+                        onPlayLudoClick = { reg -> onPlayLudoMatch(match, reg) }
                     )
                 }
             }
