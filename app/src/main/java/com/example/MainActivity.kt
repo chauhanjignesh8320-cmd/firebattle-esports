@@ -1,13 +1,18 @@
 package com.example
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import java.util.UUID
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +27,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -42,6 +48,7 @@ import com.example.data.firebase.signOut
 import com.example.data.model.AppMode
 import com.example.data.model.PlayerTab
 import com.example.data.model.UiState
+import com.example.notifications.AdminNotificationHelper
 import com.example.ui.components.ErrorBannerCard
 import com.example.ui.components.FirebattleTopBar
 import com.example.ui.screens.AdminDashboardScreen
@@ -57,18 +64,32 @@ import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.messaging.messaging
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private var deepLinkReferralCode by mutableStateOf("")
+    private var deepLinkPhonePeOrderId by mutableStateOf("")
+    private var openAdminDepositsSignal by mutableIntStateOf(0)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        AdminNotificationHelper.ensureChannel(applicationContext)
         deepLinkReferralCode = extractReferralCodeFromIntent(intent)
+        deepLinkPhonePeOrderId = extractPhonePeOrderIdFromIntent(intent)
+        if (intent?.getBooleanExtra(AdminNotificationHelper.EXTRA_OPEN_ADMIN_DEPOSITS, false) == true) {
+            openAdminDepositsSignal += 1
+        }
         setContent {
             FirebattleTheme {
-                AppContent(initialReferralCode = deepLinkReferralCode)
+                AppContent(
+                    initialReferralCode = deepLinkReferralCode,
+                    phonePeReturnOrderId = deepLinkPhonePeOrderId,
+                    openAdminDepositsSignal = openAdminDepositsSignal,
+                    onConsumePhonePeReturnOrder = { deepLinkPhonePeOrderId = "" },
+                    onConsumeOpenAdminDeposits = { openAdminDepositsSignal = 0 }
+                )
             }
         }
     }
@@ -80,6 +101,26 @@ class MainActivity : ComponentActivity() {
         if (extracted.isNotBlank()) {
             deepLinkReferralCode = extracted
         }
+        val orderId = extractPhonePeOrderIdFromIntent(intent)
+        if (orderId.isNotBlank()) {
+            deepLinkPhonePeOrderId = orderId
+        }
+        if (intent.getBooleanExtra(AdminNotificationHelper.EXTRA_OPEN_ADMIN_DEPOSITS, false)) {
+            openAdminDepositsSignal += 1
+        }
+    }
+
+    private fun extractPhonePeOrderIdFromIntent(intent: Intent?): String {
+        val uri = intent?.data ?: return ""
+        val isCustomPhonePeReturn = uri.scheme.equals("firebattle", ignoreCase = true) &&
+            uri.host.equals("phonepe-return", ignoreCase = true)
+        val isWebPhonePeReturn = uri.scheme.equals("https", ignoreCase = true) &&
+            (uri.host.equals("firebetal.com", ignoreCase = true) ||
+                uri.host.equals("www.firebetal.com", ignoreCase = true)) &&
+            (uri.path ?: "").startsWith("/phonepe-return")
+        if (!isCustomPhonePeReturn && !isWebPhonePeReturn) return ""
+        val raw = uri.getQueryParameter("orderId") ?: return ""
+        return raw.trim().filter { it.isLetterOrDigit() || it == '_' || it == '-' }.take(64)
     }
 
     private fun extractReferralCodeFromIntent(intent: Intent?): String {
@@ -108,7 +149,13 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun AppContent(initialReferralCode: String = "") {
+fun AppContent(
+    initialReferralCode: String = "",
+    phonePeReturnOrderId: String = "",
+    openAdminDepositsSignal: Int = 0,
+    onConsumePhonePeReturnOrder: () -> Unit = {},
+    onConsumeOpenAdminDeposits: () -> Unit = {}
+) {
     var currentUser by remember { mutableStateOf(Firebase.auth.currentUser) }
     DisposableEffect(Unit) {
         val listener = FirebaseAuth.AuthStateListener { auth ->
@@ -130,7 +177,11 @@ fun AppContent(initialReferralCode: String = "") {
                 currentUserId = uid,
                 userDisplayName = user.displayName ?: "",
                 userEmail = user.email ?: "",
-                initialReferralCode = initialReferralCode
+                initialReferralCode = initialReferralCode,
+                phonePeReturnOrderId = phonePeReturnOrderId,
+                openAdminDepositsSignal = openAdminDepositsSignal,
+                onConsumePhonePeReturnOrder = onConsumePhonePeReturnOrder,
+                onConsumeOpenAdminDeposits = onConsumeOpenAdminDeposits
             )
         }
     }
@@ -141,7 +192,11 @@ private fun AuthenticatedArenaShell(
     currentUserId: String,
     userDisplayName: String,
     userEmail: String,
-    initialReferralCode: String = ""
+    initialReferralCode: String = "",
+    phonePeReturnOrderId: String = "",
+    openAdminDepositsSignal: Int = 0,
+    onConsumePhonePeReturnOrder: () -> Unit = {},
+    onConsumeOpenAdminDeposits: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -177,16 +232,92 @@ private fun AuthenticatedArenaShell(
     var currentMode by rememberSaveable { mutableStateOf(AppMode.PLAYER) }
     var selectedPlayerTab by rememberSaveable { mutableStateOf(PlayerTab.TOURNAMENTS) }
     var alertsDialogTrigger by rememberSaveable { mutableStateOf(0) }
+    var adminDepositsTabTrigger by rememberSaveable { mutableIntStateOf(0) }
+    var askedNotificationPermission by rememberSaveable { mutableStateOf(false) }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            AdminNotificationHelper.ensureChannel(context)
+        }
+    }
 
     LaunchedEffect(isAdmin) {
-        if (!isAdmin && currentMode == AppMode.ADMIN) {
-            currentMode = AppMode.PLAYER
+        AdminNotificationHelper.setAdminDeviceFlag(context, isAdmin)
+        if (isAdmin) {
+            AdminNotificationHelper.ensureChannel(context)
+            Firebase.messaging.subscribeToTopic(AdminNotificationHelper.TOPIC_ADMIN_DEPOSITS)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !askedNotificationPermission) {
+                val granted = ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED
+                if (!granted) {
+                    askedNotificationPermission = true
+                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+            }
+        } else {
+            Firebase.messaging.unsubscribeFromTopic(AdminNotificationHelper.TOPIC_ADMIN_DEPOSITS)
+            if (currentMode == AppMode.ADMIN) {
+                currentMode = AppMode.PLAYER
+            }
+        }
+    }
+
+    LaunchedEffect(isAdmin, currentUserId) {
+        if (!isAdmin) return@LaunchedEffect
+        var initialSnapshotHandled = false
+        val knownPendingIds = mutableSetOf<String>()
+        playerViewModel.observeAdminDepositsFlow().collect { allDeposits ->
+            val pending = allDeposits.filter { it.status == "Pending" }
+            if (!initialSnapshotHandled) {
+                initialSnapshotHandled = true
+                knownPendingIds.addAll(pending.map { it.id })
+                AdminNotificationHelper.markSeenQuietly(context, pending.map { it.id })
+            } else {
+                val newlyArrived = pending.filter { it.id.isNotBlank() && it.id !in knownPendingIds }
+                pending.forEach { if (it.id.isNotBlank()) knownPendingIds.add(it.id) }
+                newlyArrived.forEach { dep ->
+                    AdminNotificationHelper.showDepositAlert(
+                        context = context,
+                        depositId = dep.id,
+                        ign = dep.ign,
+                        phone = dep.phone,
+                        amount = dep.amount,
+                        utr = dep.utr
+                    )
+                    scope.launch {
+                        snackbarHostState.showSnackbar("💰 New Add Cash: ₹${dep.amount} from ${dep.ign}!")
+                    }
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(isAdmin, openAdminDepositsSignal) {
+        if (isAdmin && openAdminDepositsSignal > 0) {
+            currentMode = AppMode.ADMIN
+            adminDepositsTabTrigger += 1
+            onConsumeOpenAdminDeposits()
         }
     }
 
     LaunchedEffect(playerViewModel) {
         playerViewModel.events.collect { msg ->
             snackbarHostState.showSnackbar(msg)
+        }
+    }
+
+    LaunchedEffect(phonePeReturnOrderId) {
+        if (phonePeReturnOrderId.isNotBlank()) {
+            val prefs = context.getSharedPreferences("firebattle_prefs", Context.MODE_PRIVATE)
+            prefs.edit().remove("pending_phonepe_order_id").apply()
+            selectedPlayerTab = PlayerTab.WALLET
+            currentMode = AppMode.PLAYER
+            playerViewModel.verifyPhonePeOrder(phonePeReturnOrderId)
+            onConsumePhonePeReturnOrder()
         }
     }
 
@@ -210,6 +341,8 @@ private fun AuthenticatedArenaShell(
     }
 
     val handleLogout = {
+        AdminNotificationHelper.setAdminDeviceFlag(context, false)
+        Firebase.messaging.unsubscribeFromTopic(AdminNotificationHelper.TOPIC_ADMIN_DEPOSITS)
         signOut(
             credentialManager = credentialManager,
             scope = scope
@@ -349,6 +482,7 @@ private fun AuthenticatedArenaShell(
                                 apkDownloadsCount = apkDownloadsCount,
                                 settingsState = adminSettings,
                                 isBusy = adminBusy,
+                                openDepositsTrigger = adminDepositsTabTrigger,
                                 onBackToPlayer = { currentMode = AppMode.PLAYER },
                                 onRefreshApkDownloads = { adminViewModel.refreshApkDownloadCount() },
                                 onCreateMatch = { title, game, matchMode, teamFormat, time, mapName, entry, perKill, prize, slots, rules, onSuccess ->
@@ -443,6 +577,8 @@ private fun AuthenticatedArenaShell(
                                 onSubmitDeposit = { amt, utr, onSuccess ->
                                     playerViewModel.submitDeposit(profile, amt, utr, onSuccess)
                                 },
+                                onStartPhonePeCheckout = null,
+                                onVerifyPhonePeOrder = null,
                                 onSubmitWithdrawal = { amt, upiId, onSuccess ->
                                     playerViewModel.submitWithdrawal(profile, amt, upiId, onSuccess)
                                 },

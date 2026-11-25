@@ -3,7 +3,11 @@ package com.example.ui.viewmodel
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.firebase.AdminPushNotifier
 import com.example.data.firebase.FirebattleRepository
+import com.example.data.firebase.PhonePeCreateOrderResult
+import com.example.data.firebase.PhonePeGatewayClient
+import com.example.data.firebase.PhonePeVerifyResult
 import com.example.data.model.AppSettings
 import com.example.data.model.DepositRequest
 import com.example.data.model.MatchRegistration
@@ -12,8 +16,11 @@ import com.example.data.model.TournamentMatch
 import com.example.data.model.UiState
 import com.example.data.model.UserProfile
 import com.example.data.model.WithdrawalRequest
+import com.google.firebase.Firebase
+import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FirebaseFirestoreException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,6 +33,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 class PlayerViewModel(
     private val repository: FirebattleRepository,
@@ -165,6 +173,9 @@ class PlayerViewModel(
         }
     }
 
+    fun observeAdminDepositsFlow(): Flow<List<DepositRequest>> =
+        repository.observeAllDeposits(currentUserId)
+
     fun submitDeposit(profile: UserProfile, amountText: String, utr: String, onSuccess: () -> Unit = {}) {
         val amount = amountText.trim().toLongOrNull()
         if (amount == null || amount <= 0L) {
@@ -172,8 +183,97 @@ class PlayerViewModel(
             return
         }
         runAction("₹$amount deposit request sent to Admin! Wallet updates once verified.") {
-            repository.submitDepositRequest(profile, amount, utr).also {
-                if (it.isSuccess) onSuccess()
+            repository.submitDepositRequest(profile, amount, utr).map { depositId ->
+                onSuccess()
+                viewModelScope.launch {
+                    val idToken = runCatching {
+                        Firebase.auth.currentUser?.getIdToken(false)?.await()?.token
+                    }.getOrNull()
+                    if (!idToken.isNullOrBlank()) {
+                        AdminPushNotifier.notifyNewDeposit(idToken, depositId)
+                    }
+                }
+            }
+        }
+    }
+
+    fun startPhonePeCheckout(
+        amount: Long,
+        onCheckoutReady: (merchantOrderId: String, redirectUrl: String) -> Unit,
+        onFallbackDirectUpi: () -> Unit
+    ) {
+        if (amount !in 1L..100_000L) {
+            _events.tryEmit("Enter an amount between ₹1 and ₹1,00,000.")
+            return
+        }
+        if (_isBusy.value) return
+        viewModelScope.launch {
+            _isBusy.value = true
+            try {
+                val idToken = Firebase.auth.currentUser?.getIdToken(false)?.await()?.token
+                if (idToken.isNullOrBlank()) {
+                    _events.tryEmit("Please sign in again to add money.")
+                    return@launch
+                }
+                when (val result = PhonePeGatewayClient.createOrder(idToken, amount)) {
+                    is PhonePeCreateOrderResult.Success -> {
+                        onCheckoutReady(result.merchantOrderId, result.redirectUrl)
+                    }
+                    is PhonePeCreateOrderResult.NotConfigured -> {
+                        onFallbackDirectUpi()
+                    }
+                    is PhonePeCreateOrderResult.Error -> {
+                        _events.tryEmit(result.message)
+                    }
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _events.tryEmit(e.localizedMessage ?: "Failed to start payment.")
+            } finally {
+                _isBusy.value = false
+            }
+        }
+    }
+
+    fun verifyPhonePeOrder(orderId: String, onDone: (state: String, summary: String) -> Unit = { _, _ -> }) {
+        val cleanOrderId = orderId.trim()
+        if (cleanOrderId.isBlank()) return
+        viewModelScope.launch {
+            try {
+                val idToken = Firebase.auth.currentUser?.getIdToken(false)?.await()?.token ?: return@launch
+                var result = PhonePeGatewayClient.verifyOrder(idToken, cleanOrderId)
+                if (result is PhonePeVerifyResult.Pending) {
+                    delay(1500L)
+                    result = PhonePeGatewayClient.verifyOrder(idToken, cleanOrderId)
+                }
+                when (result) {
+                    is PhonePeVerifyResult.Completed -> {
+                        val total = result.amount + result.bonusAmount
+                        val msg = if (result.bonusAmount > 0L) {
+                            "₹${result.amount} + ₹${result.bonusAmount} bonus (₹$total) added to your wallet!"
+                        } else {
+                            "₹${result.amount} added to your wallet via PhonePe PG!"
+                        }
+                        _events.tryEmit(msg)
+                        onDone("COMPLETED", msg)
+                    }
+                    is PhonePeVerifyResult.Failed -> {
+                        _events.tryEmit(result.message)
+                        onDone("FAILED", result.message)
+                    }
+                    is PhonePeVerifyResult.Pending -> {
+                        val msg = "Payment is still processing. Your wallet updates automatically once confirmed."
+                        _events.tryEmit(msg)
+                        onDone("PENDING", msg)
+                    }
+                    is PhonePeVerifyResult.Error -> {
+                        _events.tryEmit(result.message)
+                        onDone("ERROR", result.message)
+                    }
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _events.tryEmit(e.localizedMessage ?: "Unable to verify PhonePe payment.")
             }
         }
     }

@@ -168,6 +168,7 @@ private const val PREFS_NAME = "firebattle_prefs"
 private const val KEY_PENDING_UPI_AMOUNT = "pending_upi_amount"
 private const val KEY_PENDING_UPI_REF = "pending_upi_ref"
 private const val KEY_PENDING_UPI_TS = "pending_upi_ts"
+private const val KEY_PENDING_PG_ORDER_ID = "pending_phonepe_order_id"
 private const val MAX_PENDING_UPI_AGE_MS = 30L * 60L * 1000L
 
 @Composable
@@ -182,7 +183,9 @@ fun UpiQrPaymentCard(
     isBusy: Boolean = false,
     onUpiRefCaptured: (String) -> Unit = {},
     onAutoSubmitUpiDeposit: ((Long, String) -> Unit)? = null,
-    onReturnedFromUpiApp: ((Long, String, Boolean) -> Unit)? = null
+    onReturnedFromUpiApp: ((Long, String, Boolean) -> Unit)? = null,
+    onStartPhonePeCheckout: ((Long, (String, String) -> Unit, () -> Unit) -> Unit)? = null,
+    onVerifyPhonePeOrder: ((String) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -201,6 +204,7 @@ fun UpiQrPaymentCard(
     val latestOnAutoSubmit by rememberUpdatedState(onAutoSubmitUpiDeposit)
     val latestOnReturned by rememberUpdatedState(onReturnedFromUpiApp)
     val latestOnFeedback by rememberUpdatedState(onFeedback)
+    val latestOnVerifyPhonePe by rememberUpdatedState(onVerifyPhonePeOrder)
 
     val upiUri = remember(cleanUpi, upiName, amount, showQrSection) {
         if (hasValidUpi && showQrSection) buildUpiPaymentUri(cleanUpi, upiName, amount) else ""
@@ -244,6 +248,11 @@ fun UpiQrPaymentCard(
     }
 
     LaunchedEffect(Unit) {
+        val pendingOrderId = prefs.getString(KEY_PENDING_PG_ORDER_ID, "").orEmpty()
+        if (pendingOrderId.isNotBlank() && latestOnVerifyPhonePe != null) {
+            prefs.edit().remove(KEY_PENDING_PG_ORDER_ID).apply()
+            latestOnVerifyPhonePe?.invoke(pendingOrderId)
+        }
         val savedAmount = prefs.getLong(KEY_PENDING_UPI_AMOUNT, 0L)
         val savedTs = prefs.getLong(KEY_PENDING_UPI_TS, 0L)
         val savedRef = prefs.getString(KEY_PENDING_UPI_REF, "").orEmpty()
@@ -266,6 +275,11 @@ fun UpiQrPaymentCard(
                     }
                 }
                 Lifecycle.Event.ON_RESUME -> {
+                    val pendingOrderId = prefs.getString(KEY_PENDING_PG_ORDER_ID, "").orEmpty()
+                    if (pendingOrderId.isNotBlank() && latestOnVerifyPhonePe != null) {
+                        prefs.edit().remove(KEY_PENDING_PG_ORDER_ID).apply()
+                        latestOnVerifyPhonePe?.invoke(pendingOrderId)
+                    }
                     val activeAmount = pendingAmountState.longValue
                     val launchedAt = pendingLaunchTimeMs.longValue
                     if (activeAmount > 0L && launchedAt > 0L && !pendingAutoSubmitted.value) {
@@ -415,20 +429,42 @@ fun UpiQrPaymentCard(
                             onFeedback("Select a quick pack or enter Amount (₹) first before paying.")
                             return@Button
                         }
-                        val txnRef = generateUpiTxnRef()
-                        savePendingLaunch(amount, txnRef, System.currentTimeMillis())
-                        val payUri = buildUpiPaymentUri(
-                            upiId = cleanUpi,
-                            upiName = upiName,
-                            amount = amount,
-                            transactionNote = "Firebattle Wallet $txnRef"
-                        )
-                        val payIntent = Intent(Intent.ACTION_VIEW, Uri.parse(payUri))
-                        try {
-                            upiLauncher.launch(payIntent)
-                        } catch (_: ActivityNotFoundException) {
-                            clearPendingLaunch()
-                            onFeedback("No UPI app installed on this phone (GPay, PhonePe, Paytm, or BHIM required).")
+                        val launchDirectUpi = {
+                            val txnRef = generateUpiTxnRef()
+                            savePendingLaunch(amount, txnRef, System.currentTimeMillis())
+                            val payUri = buildUpiPaymentUri(
+                                upiId = cleanUpi,
+                                upiName = upiName,
+                                amount = amount,
+                                transactionNote = "Firebattle Wallet $txnRef"
+                            )
+                            val payIntent = Intent(Intent.ACTION_VIEW, Uri.parse(payUri))
+                            try {
+                                upiLauncher.launch(payIntent)
+                            } catch (_: ActivityNotFoundException) {
+                                clearPendingLaunch()
+                                onFeedback("No UPI app installed on this phone (GPay, PhonePe, Paytm, or BHIM required).")
+                            }
+                        }
+                        if (onStartPhonePeCheckout != null) {
+                            onStartPhonePeCheckout(
+                                amount,
+                                { orderId, redirectUrl ->
+                                    prefs.edit().putString(KEY_PENDING_PG_ORDER_ID, orderId).apply()
+                                    val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(redirectUrl))
+                                    try {
+                                        context.startActivity(browserIntent)
+                                    } catch (_: ActivityNotFoundException) {
+                                        prefs.edit().remove(KEY_PENDING_PG_ORDER_ID).apply()
+                                        onFeedback("Unable to open PhonePe Checkout browser.")
+                                    }
+                                },
+                                {
+                                    launchDirectUpi()
+                                }
+                            )
+                        } else {
+                            launchDirectUpi()
                         }
                     },
                     enabled = !isBusy,

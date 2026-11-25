@@ -655,7 +655,7 @@ class FirebattleRepository(
         }
     }
 
-    suspend fun submitDepositRequest(profile: UserProfile, amount: Long, utr: String): Result<Unit> {
+    suspend fun submitDepositRequest(profile: UserProfile, amount: Long, utr: String): Result<String> {
         val rawUtr = utr.trim().take(32)
         val cleanUtr = when {
             rawUtr.isEmpty() -> {
@@ -686,7 +686,7 @@ class FirebattleRepository(
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
             ).await()
-            Result.success(Unit)
+            Result.success(docRef.id)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

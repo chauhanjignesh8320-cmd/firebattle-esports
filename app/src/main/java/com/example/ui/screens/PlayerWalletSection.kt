@@ -126,6 +126,8 @@ fun PlayerWalletSection(
     isBusy: Boolean,
     onBackToHome: () -> Unit,
     onSubmitDeposit: (String, String, () -> Unit) -> Unit,
+    onStartPhonePeCheckout: ((Long, (String, String) -> Unit, () -> Unit) -> Unit)? = null,
+    onVerifyPhonePeOrder: ((String, (String, String) -> Unit) -> Unit)? = null,
     onSubmitWithdrawal: (String, String, () -> Unit) -> Unit,
     onCopyFeedback: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -414,6 +416,8 @@ fun PlayerWalletSection(
                                 settings = settings,
                                 isBusy = isBusy,
                                 onSubmitDeposit = onSubmitDeposit,
+                                onStartPhonePeCheckout = onStartPhonePeCheckout,
+                                onVerifyPhonePeOrder = onVerifyPhonePeOrder,
                                 onCopyFeedback = onCopyFeedback
                             )
 
@@ -755,6 +759,8 @@ private fun AddMoneyRealUpiPanel(
     settings: AppSettings,
     isBusy: Boolean,
     onSubmitDeposit: (String, String, () -> Unit) -> Unit,
+    onStartPhonePeCheckout: ((Long, (String, String) -> Unit, () -> Unit) -> Unit)? = null,
+    onVerifyPhonePeOrder: ((String, (String, String) -> Unit) -> Unit)? = null,
     onCopyFeedback: (String) -> Unit
 ) {
     var depAmount by rememberSaveable { mutableStateOf("100") }
@@ -955,6 +961,14 @@ private fun AddMoneyRealUpiPanel(
                 onAutoSubmitUpiDeposit = { paidAmount, capturedRef ->
                     onSubmitDeposit(paidAmount.toString(), capturedRef) {
                         lastSubmittedSummary = "₹$paidAmount UPI payment sent directly to Admin (Ref: $capturedRef)."
+                    }
+                },
+                onStartPhonePeCheckout = onStartPhonePeCheckout,
+                onVerifyPhonePeOrder = { orderId ->
+                    onVerifyPhonePeOrder?.invoke(orderId) { state, msg ->
+                        if (state == "COMPLETED") {
+                            lastSubmittedSummary = msg
+                        }
                     }
                 }
             )

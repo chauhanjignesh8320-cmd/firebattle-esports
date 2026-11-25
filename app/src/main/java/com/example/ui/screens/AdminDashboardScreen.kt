@@ -1,9 +1,14 @@
 package com.example.ui.screens
 
+import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -35,6 +40,7 @@ import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Refresh
@@ -67,6 +73,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -95,6 +102,7 @@ import com.example.data.model.TournamentMatch
 import com.example.data.model.UiState
 import com.example.data.model.UserProfile
 import com.example.data.model.WithdrawalRequest
+import com.example.notifications.AdminNotificationHelper
 import com.example.ui.components.AdminUpiQrPreviewCard
 import com.example.ui.components.EmptyArenaState
 import com.example.ui.components.ErrorBannerCard
@@ -129,6 +137,7 @@ fun AdminDashboardScreen(
     apkDownloadsCount: Long?,
     settingsState: UiState<AppSettings>,
     isBusy: Boolean,
+    openDepositsTrigger: Int = 0,
     onBackToPlayer: () -> Unit,
     onRefreshApkDownloads: () -> Unit,
     onCreateMatch: (String, String, String, String, String, String, String, String, String, String, String, () -> Unit) -> Unit,
@@ -155,6 +164,11 @@ fun AdminDashboardScreen(
     modifier: Modifier = Modifier
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(AdminTab.MATCHES) }
+    LaunchedEffect(openDepositsTrigger) {
+        if (openDepositsTrigger > 0) {
+            selectedTab = AdminTab.DEPOSITS
+        }
+    }
     var matchToDelete by remember { mutableStateOf<TournamentMatch?>(null) }
     var userToAdjustWallet by remember { mutableStateOf<UserProfile?>(null) }
     var rewardTarget by remember { mutableStateOf<Pair<TournamentMatch, MatchRegistration>?>(null) }
@@ -622,6 +636,9 @@ private fun AdminTabBody(
             }
 
             AdminTab.DEPOSITS -> {
+                item {
+                    AdminDepositAlertsCard()
+                }
                 when (depositsState) {
                     is UiState.Loading -> item { CircularProgressIndicator(color = BlazeOrange) }
                     is UiState.Error -> item { ErrorBannerCard(depositsState.message) }
@@ -1921,4 +1938,127 @@ private fun adminTabLabel(tab: AdminTab): String = when (tab) {
     AdminTab.WITHDRAWALS -> stringResource(R.string.admin_tab_withdrawals)
     AdminTab.PLAYERS -> stringResource(R.string.admin_tab_players)
     AdminTab.SETTINGS -> stringResource(R.string.admin_tab_settings)
+}
+
+@Composable
+private fun AdminDepositAlertsCard() {
+    val context = LocalContext.current
+    var alertsEnabled by remember {
+        mutableStateOf(AdminNotificationHelper.hasNotificationPermission(context))
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        alertsEnabled = AdminNotificationHelper.hasNotificationPermission(context)
+        if (granted) {
+            AdminNotificationHelper.showTestAlert(context)
+        }
+    }
+
+    Surface(
+        color = ArenaSlateSurface,
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(
+            1.dp,
+            if (alertsEnabled) EmeraldWin.copy(alpha = 0.45f) else BlazeOrange.copy(alpha = 0.6f)
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.NotificationsActive,
+                        contentDescription = null,
+                        tint = if (alertsEnabled) EmeraldWin else BlazeOrange
+                    )
+                    Column {
+                        Text(
+                            text = if (alertsEnabled) "Top Phone Alerts Active" else "Enable Top Phone Alerts",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = TextPrimary,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = if (alertsEnabled) {
+                                "Whenever a player adds cash, a notification drops at the top of your phone."
+                            } else {
+                                "Allow notification permission so Add Cash alerts pop up at the top of your phone."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary
+                        )
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (!alertsEnabled) {
+                    Button(
+                        onClick = {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            } else {
+                                val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                    putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                                }
+                                runCatching { context.startActivity(intent) }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = BlazeOrange),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp)
+                            .testTag("admin_enable_alerts_button")
+                    ) {
+                        Text("Allow Alerts", fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        alertsEnabled = AdminNotificationHelper.hasNotificationPermission(context)
+                        if (alertsEnabled) {
+                            val sent = AdminNotificationHelper.showTestAlert(context)
+                            Toast.makeText(
+                                context,
+                                if (sent) "Test notification sent! Check top of phone." else "Allow notifications in App Settings first.",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        } else {
+                            val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                            }
+                            runCatching { context.startActivity(intent) }
+                        }
+                    },
+                    border = BorderStroke(1.dp, EmeraldWin.copy(alpha = 0.65f)),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp)
+                        .testTag("admin_test_alert_button")
+                ) {
+                    Text("Test Top Alert", color = EmeraldWin, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
 }
