@@ -1934,6 +1934,107 @@ test("Ludo Rooms: atomic create, join, active-turn enforcement, cheat-proof win 
   );
 });
 
+test("Ludo Slot Tournaments (1vs1, 2vs2, 3vs3, 4vs4): Admin creation and player numbered slot booking", async () => {
+  const adminDb = adminContext().firestore();
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID, { email: "alice@test.com", email_verified: true }).firestore();
+  const bobDb = testEnv.authenticatedContext(BOB_UID, { email: "bob@test.com", email_verified: true }).firestore();
+
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await db.collection("users").doc(ALICE_UID).set({
+      userId: ALICE_UID,
+      email: "alice@test.com",
+      ign: "LudoKingAlice",
+      gameUid: "111222333",
+      phone: "9876543210",
+      wallet: 100,
+      createdAt: pastDate(10000),
+      updatedAt: pastDate(10000),
+    });
+    await db.collection("users").doc(BOB_UID).set({
+      userId: BOB_UID,
+      email: "bob@test.com",
+      ign: "LudoProBob",
+      gameUid: "444555666",
+      phone: "9876543211",
+      wallet: 100,
+      createdAt: pastDate(10000),
+      updatedAt: pastDate(10000),
+    });
+  });
+
+  // Admin creates a Ludo 3vs3 (6-slot) match
+  await assertSucceeds(
+    adminDb.collection("matches").doc("ludo_3v3_1").set({
+      title: "Firebattle Ludo 3vs3",
+      game: "Ludo",
+      matchMode: "Ludo",
+      teamFormat: "3vs3",
+      matchTime: "Tonight 8:00 PM",
+      mapName: "Classic Board",
+      entry: 20,
+      perKill: 0,
+      prize: 108,
+      slots: 6,
+      joinedCount: 0,
+      takenSlots: [],
+      roomId: "",
+      roomPass: "",
+      status: "LIVE",
+      createdBy: ADMIN_UID,
+      createdAt: pastDate(5000),
+      updatedAt: pastDate(5000),
+    })
+  );
+
+  // Alice books Team 1 Slot #2
+  const aliceJoin = aliceDb.batch();
+  aliceJoin.set(aliceDb.collection("registrations").doc(`ludo_3v3_1_${ALICE_UID}`), {
+    matchId: "ludo_3v3_1",
+    userId: ALICE_UID,
+    ign: "LudoKingAlice",
+    gameUid: "111222333",
+    phone: "9876543210",
+    entryPaid: 20,
+    slotNumber: 2,
+    createdAt: pastDate(3000),
+  });
+  aliceJoin.update(aliceDb.collection("matches").doc("ludo_3v3_1"), {
+    joinedCount: 1,
+    takenSlots: [2],
+    updatedAt: pastDate(3000),
+  });
+  aliceJoin.update(aliceDb.collection("users").doc(ALICE_UID), {
+    wallet: 80,
+    updatedAt: pastDate(3000),
+  });
+  await assertSucceeds(aliceJoin.commit());
+
+  // Bob books Team 2 Slot #5
+  const bobJoin = bobDb.batch();
+  bobJoin.set(bobDb.collection("registrations").doc(`ludo_3v3_1_${BOB_UID}`), {
+    matchId: "ludo_3v3_1",
+    userId: BOB_UID,
+    ign: "LudoProBob",
+    gameUid: "444555666",
+    phone: "9876543211",
+    entryPaid: 20,
+    slotNumber: 5,
+    createdAt: pastDate(2000),
+  });
+  bobJoin.update(bobDb.collection("matches").doc("ludo_3v3_1"), {
+    joinedCount: 2,
+    takenSlots: [2, 5],
+    updatedAt: pastDate(2000),
+  });
+  bobJoin.update(bobDb.collection("users").doc(BOB_UID), {
+    wallet: 80,
+    updatedAt: pastDate(2000),
+  });
+  await assertSucceeds(bobJoin.commit());
+});
+
+
 
 
 

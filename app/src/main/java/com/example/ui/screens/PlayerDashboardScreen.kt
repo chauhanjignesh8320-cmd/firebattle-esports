@@ -98,6 +98,7 @@ import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.data.model.AppSettings
 import com.example.data.model.DepositRequest
+import com.example.data.model.GameTitle
 import com.example.data.model.MatchMode
 import com.example.data.model.MatchRegistration
 import com.example.data.model.MatchStatus
@@ -171,6 +172,7 @@ fun PlayerDashboardScreen(
     val context = LocalContext.current
     var showEditProfileDialog by rememberSaveable { mutableStateOf(false) }
     var showAlertsDialog by rememberSaveable { mutableStateOf(false) }
+    var ludoInitialFormat by rememberSaveable { mutableStateOf("All") }
     var pendingJoinMatch by remember { mutableStateOf<TournamentMatch?>(null) }
     var inspectedMatch by remember { mutableStateOf<TournamentMatch?>(null) }
 
@@ -191,9 +193,21 @@ fun PlayerDashboardScreen(
     }
 
     if (showLudoArena && ludoViewModel != null) {
+        val liveAll = (matchesState as? UiState.Success)?.data.orEmpty()
+        val completedAll = (completedMatchesState as? UiState.Success)?.data.orEmpty()
+        val joinedIds = (joinedMatchIdsState as? UiState.Success)?.data ?: emptySet()
+        val myRegs = (myRegistrationsListState as? UiState.Success)?.data.orEmpty()
         LudoArenaScreen(
             ludoViewModel = ludoViewModel,
             profile = profile,
+            liveLudoMatches = liveAll.filter { it.game == GameTitle.LUDO.label },
+            completedLudoMatches = completedAll.filter { it.game == GameTitle.LUDO.label },
+            joinedIds = joinedIds,
+            myRegistrations = myRegs,
+            initialFormatFilter = ludoInitialFormat,
+            isMatchBusy = isBusy,
+            onRequestJoinMatch = { pendingJoinMatch = it },
+            onInspectMatch = { inspectedMatch = it },
             onBackToHome = { onSetShowLudoArena(false) },
             onOpenWallet = {
                 onSetShowLudoArena(false)
@@ -202,14 +216,12 @@ fun PlayerDashboardScreen(
             onCopyFeedback = onCopyFeedback,
             modifier = modifier
         )
-        return
-    }
-
-    BoxWithConstraints(
-        modifier = modifier
-            .fillMaxSize()
-            .background(ArenaObsidian)
-    ) {
+    } else {
+        BoxWithConstraints(
+            modifier = modifier
+                .fillMaxSize()
+                .background(ArenaObsidian)
+        ) {
         val useRail = maxWidth >= 600.dp
 
         if (useRail) {
@@ -257,7 +269,10 @@ fun PlayerDashboardScreen(
                         initialReferralCode = initialReferralCode,
                         isBusy = isBusy,
                         onSelectTab = onSelectTab,
-                        onOpenLudo = { onSetShowLudoArena(true) },
+                        onOpenLudo = { fmt ->
+                            ludoInitialFormat = fmt
+                            onSetShowLudoArena(true)
+                        },
                         onEditProfile = { showEditProfileDialog = true },
                         onRequestJoin = { pendingJoinMatch = it },
                         onInspectMatch = { inspectedMatch = it },
@@ -323,7 +338,10 @@ fun PlayerDashboardScreen(
                     initialReferralCode = initialReferralCode,
                     isBusy = isBusy,
                     onSelectTab = onSelectTab,
-                    onOpenLudo = { onSetShowLudoArena(true) },
+                    onOpenLudo = { fmt ->
+                        ludoInitialFormat = fmt
+                        onSetShowLudoArena(true)
+                    },
                     onEditProfile = { showEditProfileDialog = true },
                     onRequestJoin = { pendingJoinMatch = it },
                     onInspectMatch = { inspectedMatch = it },
@@ -339,6 +357,7 @@ fun PlayerDashboardScreen(
                 )
             }
         }
+    }
     }
 
     if (showAlertsDialog) {
@@ -496,7 +515,7 @@ private fun PlayerTabContent(
     initialReferralCode: String = "",
     isBusy: Boolean,
     onSelectTab: (PlayerTab) -> Unit,
-    onOpenLudo: () -> Unit,
+    onOpenLudo: (String) -> Unit,
     onEditProfile: () -> Unit,
     onRequestJoin: (TournamentMatch) -> Unit,
     onInspectMatch: (TournamentMatch) -> Unit,
@@ -658,7 +677,7 @@ private fun TournamentsSection(
     myRegistrationsListState: UiState<List<MatchRegistration>>,
     isBusy: Boolean,
     onSelectTab: (PlayerTab) -> Unit,
-    onOpenLudo: () -> Unit,
+    onOpenLudo: (String) -> Unit,
     onEditProfile: () -> Unit,
     onRequestJoin: (TournamentMatch) -> Unit,
     onInspectMatch: (TournamentMatch) -> Unit,
@@ -830,9 +849,11 @@ private fun TournamentsSection(
 
                 is UiState.Success -> {
                     val categoryFiltered = activeFeedState.data.filter { match ->
+                        val isLudoMatch = match.game == GameTitle.LUDO.label
                         val mode = MatchMode.fromRaw(match.matchMode).label
                         val format = TeamFormat.fromRaw(match.teamFormat).label
-                        (gameFilter == "All" || match.game == gameFilter) &&
+                        (!isLudoMatch || (feedFilter == "Ongoing" && onlyJoinedFilter)) &&
+                            (gameFilter == "All" || match.game == gameFilter) &&
                             (modeFilter == "All" || mode == modeFilter) &&
                             (formatFilter == "All" || format == formatFilter)
                     }
@@ -881,7 +902,7 @@ private fun TournamentsSection(
 }
 
 @Composable
-private fun TournamentMatchCard(
+internal fun TournamentMatchCard(
     match: TournamentMatch,
     alreadyJoined: Boolean,
     myRegistration: MatchRegistration?,
@@ -926,8 +947,13 @@ private fun TournamentMatchCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    val iconRes = if (match.game == GameTitle.LUDO.label) {
+                        R.drawable.img_tile_ludo
+                    } else {
+                        R.drawable.ic_launcher_art
+                    }
                     Image(
-                        painter = painterResource(id = R.drawable.ic_launcher_art),
+                        painter = painterResource(id = iconRes),
                         contentDescription = match.game,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier

@@ -74,6 +74,7 @@ import com.example.ui.theme.TextSecondary
 
 private data class MatchQuickPreset(
     val chipLabel: String,
+    val game: GameTitle? = null,
     val mode: MatchMode,
     val format: TeamFormat,
     val entry: String,
@@ -124,11 +125,15 @@ fun CreateTournamentCard(
     )
 
     val presets = listOf(
-        MatchQuickPreset("1vs1 Lone Wolf", MatchMode.LONE_WOLF, TeamFormat.ONE_VS_ONE, "50", "80", "0", "2", "Iron Cage"),
-        MatchQuickPreset("2vs2 CS Duo", MatchMode.CLASH_SQUAD, TeamFormat.TWO_VS_TWO, "50", "160", "0", "4", "Bermuda CS"),
-        MatchQuickPreset("4vs4 CS Squad", MatchMode.CLASH_SQUAD, TeamFormat.FOUR_VS_FOUR, "50", "320", "10", "8", "Kalahari CS"),
-        MatchQuickPreset("₹20 Custom Room", MatchMode.CUSTOM, TeamFormat.FULL_MAP, "20", "650", "10", "48", "Bermuda"),
-        MatchQuickPreset("₹50 Pro Custom", MatchMode.CUSTOM, TeamFormat.FULL_MAP, "50", "1600", "25", "48", "Bermuda")
+        MatchQuickPreset("Ludo 1vs1", GameTitle.LUDO, MatchMode.LUDO, TeamFormat.ONE_VS_ONE, "20", "36", "0", "2", "Classic Board"),
+        MatchQuickPreset("Ludo 2vs2", GameTitle.LUDO, MatchMode.LUDO, TeamFormat.TWO_VS_TWO, "20", "72", "0", "4", "Classic Board"),
+        MatchQuickPreset("Ludo 3vs3", GameTitle.LUDO, MatchMode.LUDO, TeamFormat.THREE_VS_THREE, "20", "108", "0", "6", "Classic Board"),
+        MatchQuickPreset("Ludo 4vs4", GameTitle.LUDO, MatchMode.LUDO, TeamFormat.FOUR_VS_FOUR, "20", "144", "0", "8", "Classic Board"),
+        MatchQuickPreset("1vs1 Lone Wolf", null, MatchMode.LONE_WOLF, TeamFormat.ONE_VS_ONE, "50", "80", "0", "2", "Iron Cage"),
+        MatchQuickPreset("2vs2 CS Duo", null, MatchMode.CLASH_SQUAD, TeamFormat.TWO_VS_TWO, "50", "160", "0", "4", "Bermuda CS"),
+        MatchQuickPreset("4vs4 CS Squad", null, MatchMode.CLASH_SQUAD, TeamFormat.FOUR_VS_FOUR, "50", "320", "10", "8", "Kalahari CS"),
+        MatchQuickPreset("₹20 Custom Room", null, MatchMode.CUSTOM, TeamFormat.FULL_MAP, "20", "650", "10", "48", "Bermuda"),
+        MatchQuickPreset("₹50 Pro Custom", null, MatchMode.CUSTOM, TeamFormat.FULL_MAP, "50", "1600", "25", "48", "Bermuda")
     )
 
     Surface(
@@ -148,7 +153,7 @@ fun CreateTournamentCard(
             )
 
             Text(
-                text = "Quick Mode & Profit Presets (1vs1 / 2vs2 / 4vs4 / Custom)",
+                text = "Quick Mode & Profit Presets (Ludo 1v1-4v4 / FF / BGMI)",
                 style = MaterialTheme.typography.labelSmall,
                 color = TextSecondary
             )
@@ -158,26 +163,34 @@ fun CreateTournamentCard(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 items(presets) { preset ->
-                    val isSelected = selectedMode == preset.mode.label &&
+                    val isSelected = (preset.game == null || selectedGame == preset.game.label) &&
+                        selectedMode == preset.mode.label &&
                         selectedFormat == preset.format.label &&
                         entry == preset.entry &&
                         slots == preset.slots
                     FilterChip(
                         selected = isSelected,
                         onClick = {
+                            val prevDefault = defaultRulesForGame(selectedGame)
+                            val nextGame = preset.game?.label
+                                ?: if (selectedGame == GameTitle.LUDO.label) GameTitle.FREE_FIRE_MAX.label else selectedGame
+                            selectedGame = nextGame
                             selectedMode = preset.mode.label
                             selectedFormat = preset.format.label
                             entry = preset.entry
                             prize = preset.prize
                             perKill = preset.perKill
                             slots = preset.slots
-                            mapName = if (selectedGame == GameTitle.BGMI.label && preset.mode == MatchMode.CUSTOM) {
+                            mapName = if (nextGame == GameTitle.BGMI.label && preset.mode == MatchMode.CUSTOM) {
                                 "Erangel"
                             } else {
                                 preset.defaultMap
                             }
+                            if (rulesText.isBlank() || rulesText == prevDefault) {
+                                rulesText = defaultRulesForGame(nextGame)
+                            }
                             if (time.isBlank()) time = "Tonight 9:00 PM"
-                            if (title.isBlank()) title = "${preset.chipLabel} #1"
+                            if (title.isBlank() || title.endsWith("#1")) title = "${preset.chipLabel} #1"
                         },
                         label = { Text(preset.chipLabel) },
                         colors = FilterChipDefaults.filterChipColors(
@@ -225,9 +238,22 @@ fun CreateTournamentCard(
                                     }
                                 }
                                 MatchMode.CUSTOM -> {
-                                    if (mapName.isBlank() || mapName == "Iron Cage") {
+                                    if (mapName.isBlank() || mapName == "Iron Cage" || mapName == "Classic Board") {
                                         mapName = if (selectedGame == GameTitle.BGMI.label) "Erangel" else "Bermuda"
                                     }
+                                }
+                                MatchMode.LUDO -> {
+                                    val prevDefault = defaultRulesForGame(selectedGame)
+                                    selectedGame = GameTitle.LUDO.label
+                                    if (rulesText.isBlank() || rulesText == prevDefault) {
+                                        rulesText = defaultRulesForGame(GameTitle.LUDO.label)
+                                    }
+                                    if (selectedFormat == TeamFormat.FULL_MAP.label) {
+                                        selectedFormat = TeamFormat.ONE_VS_ONE.label
+                                        slots = TeamFormat.ONE_VS_ONE.defaultSlots.toString()
+                                    }
+                                    mapName = "Classic Board"
+                                    if (perKill.isBlank()) perKill = "0"
                                 }
                             }
                         },
@@ -312,6 +338,17 @@ fun CreateTournamentCard(
                             onClick = {
                                 val prevDefault = defaultRulesForGame(selectedGame)
                                 selectedGame = gameOption.label
+                                if (gameOption == GameTitle.LUDO) {
+                                    selectedMode = MatchMode.LUDO.label
+                                    if (selectedFormat == TeamFormat.FULL_MAP.label) {
+                                        selectedFormat = TeamFormat.ONE_VS_ONE.label
+                                        slots = TeamFormat.ONE_VS_ONE.defaultSlots.toString()
+                                    }
+                                    mapName = "Classic Board"
+                                } else if (selectedMode == MatchMode.LUDO.label) {
+                                    selectedMode = MatchMode.CUSTOM.label
+                                    mapName = if (gameOption == GameTitle.BGMI) "Erangel" else "Bermuda"
+                                }
                                 if (rulesText.isBlank() || rulesText == prevDefault) {
                                     rulesText = defaultRulesForGame(gameOption.label)
                                 }
@@ -676,7 +713,7 @@ fun AdminMatchCard(
                 border = BorderStroke(1.dp, ArenaSlateBorder),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                val isTeamVsMode = resolvedFormat in listOf("1vs1", "2vs2", "4vs4")
+                val isTeamVsMode = resolvedFormat in listOf("1vs1", "2vs2", "3vs3", "4vs4")
                 val teamHalf = (match.slots / 2L).coerceAtLeast(1L).toInt()
                 Column(
                     modifier = Modifier.padding(12.dp),

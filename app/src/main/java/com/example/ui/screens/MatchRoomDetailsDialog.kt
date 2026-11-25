@@ -373,7 +373,7 @@ fun MatchRoomDetailsDialog(
                     alreadyJoined ->
                         "Room ID & Password will display above 4 to 6 minutes before ${match.matchTime}."
                     else ->
-                        "Select your numbered slot & Free Fire / BGMI IGN to unlock Room ID & Password."
+                        "Select your numbered slot & ${match.game} In-Game Name to unlock Room ID & Password."
                 }
                 Column(
                     modifier = Modifier
@@ -453,7 +453,7 @@ fun MatchRoomDetailsDialog(
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("1. Join match in Firebattle and choose your Slot # (e.g. Slot #14) with your exact Free Fire / BGMI In-Game Name.", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                    Text("1. Join match in Firebattle and choose your Slot # (e.g. Slot #1) with your exact ${match.game} In-Game Name.", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
                     Text("2. 4–6 minutes before match time, Room ID & Password will appear on this screen.", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
                     Text("3. Tap Copy on Room ID & Password, open Custom Room in game, and enter them.", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
                     Text("4. Sit ONLY in your booked Slot #. Unknown IGNs or wrong-slot players will be kicked by Admin.", style = MaterialTheme.typography.bodySmall, color = BlazeOrange, fontWeight = FontWeight.SemiBold)

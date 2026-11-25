@@ -35,7 +35,8 @@ enum class AdminTab {
 
 enum class GameTitle(val label: String) {
     FREE_FIRE_MAX("Free Fire MAX"),
-    BGMI("BGMI");
+    BGMI("BGMI"),
+    LUDO("Ludo");
 
     companion object {
         fun fromRaw(raw: String?): GameTitle =
@@ -56,7 +57,8 @@ enum class MatchStatus(val wireValue: String) {
 enum class MatchMode(val label: String) {
     CUSTOM("Custom"),
     CLASH_SQUAD("Clash Squad"),
-    LONE_WOLF("Lone Wolf");
+    LONE_WOLF("Lone Wolf"),
+    LUDO("Ludo");
 
     companion object {
         fun fromRaw(raw: String?): MatchMode =
@@ -67,6 +69,7 @@ enum class MatchMode(val label: String) {
 enum class TeamFormat(val label: String, val defaultSlots: Long) {
     ONE_VS_ONE("1vs1", 2L),
     TWO_VS_TWO("2vs2", 4L),
+    THREE_VS_THREE("3vs3", 6L),
     FOUR_VS_FOUR("4vs4", 8L),
     FULL_MAP("Full Map", 48L);
 
@@ -195,8 +198,14 @@ const val DEFAULT_FF_RULES_TEXT =
 const val DEFAULT_BGMI_RULES_TEXT =
     "+ID LEVEL 30+ ALLOWED\n+MOBILE FAIR PLAY ALLOWED\n-EMULATOR / GFX BAN\n-TEAMING NOT ALLOWED\n-HACK / CONFIG BAN\n-IDP SHARE NOT ALLOWED"
 
-fun defaultRulesForGame(game: String): String =
-    if (game == GameTitle.BGMI.label) DEFAULT_BGMI_RULES_TEXT else DEFAULT_FF_RULES_TEXT
+const val DEFAULT_LUDO_RULES_TEXT =
+    "+OFFICIAL LUDO ROOM / IN-APP FAIR PLAY\n+JOIN SLOT BEFORE MATCH TIME\n-NO MOD APK OR EMULATOR\n-NO WRONG SLOT BOOKING\n-ROOM CODE SHARE NOT ALLOWED"
+
+fun defaultRulesForGame(game: String): String = when (game) {
+    GameTitle.BGMI.label -> DEFAULT_BGMI_RULES_TEXT
+    GameTitle.LUDO.label -> DEFAULT_LUDO_RULES_TEXT
+    else -> DEFAULT_FF_RULES_TEXT
+}
 
 fun parseMatchRuleEntries(rawRules: String, game: String): List<MatchRuleEntry> {
     val source = rawRules.trim().ifBlank { defaultRulesForGame(game) }

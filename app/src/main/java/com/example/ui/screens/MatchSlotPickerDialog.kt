@@ -109,7 +109,7 @@ fun MatchSlotPickerDialog(
     val hasEnoughBalance = profile.wallet >= match.entry
     val shortage = (match.entry - profile.wallet).coerceAtLeast(0L)
     val resolvedFormat = TeamFormat.fromRaw(match.teamFormat).label
-    val isTeamSplit = resolvedFormat in listOf("1vs1", "2vs2", "4vs4")
+    val isTeamSplit = resolvedFormat in listOf("1vs1", "2vs2", "3vs3", "4vs4")
     val teamHalf = (totalSlots / 2L).coerceAtLeast(1L)
 
     Dialog(

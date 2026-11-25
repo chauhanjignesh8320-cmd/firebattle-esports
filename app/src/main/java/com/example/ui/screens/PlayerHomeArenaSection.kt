@@ -70,6 +70,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.data.model.AppSettings
+import com.example.data.model.GameTitle
 import com.example.data.model.MatchRegistration
 import com.example.data.model.TournamentMatch
 import com.example.data.model.UserProfile
@@ -123,7 +124,7 @@ fun PlayerHomeArenaSection(
     joinedIds: Set<String>,
     myRegistrations: List<MatchRegistration>,
     onOpenArenaFilter: (ArenaFilterSelection) -> Unit,
-    onOpenLudo: () -> Unit = {},
+    onOpenLudo: (String) -> Unit = {},
     onOpenWallet: () -> Unit,
     onOpenRefer: () -> Unit,
     onOpenProfile: () -> Unit,
@@ -134,6 +135,15 @@ fun PlayerHomeArenaSection(
     var showTopPlayersDialog by rememberSaveable { mutableStateOf(false) }
     var showContactDialog by rememberSaveable { mutableStateOf(false) }
 
+    val esportLiveMatches = remember(liveMatches) {
+        liveMatches.filter { it.game != GameTitle.LUDO.label }
+    }
+    val ludoLiveMatches = remember(liveMatches) {
+        liveMatches.filter { it.game == GameTitle.LUDO.label }
+    }
+    val esportCompletedMatches = remember(completedMatches) {
+        completedMatches.filter { it.game != GameTitle.LUDO.label }
+    }
     val ongoingJoinedCount = remember(liveMatches, joinedIds) {
         liveMatches.count { it.id in joinedIds && it.roomId.isNotBlank() }
     }
@@ -157,8 +167,8 @@ fun PlayerHomeArenaSection(
             ),
             PromoSlide(
                 imageRes = R.drawable.img_tile_ludo,
-                tag = "NEW • IN-APP LUDO",
-                headline = "Play 1v1 Cash Ludo, Smart Bot & Pass & Play",
+                tag = "SEPARATE LUDO SLOTS",
+                headline = "Book 1vs1, 2vs2, 3vs3 & 4vs4 Ludo Tournament Slots",
                 openLudoArena = true
             ),
             PromoSlide(
@@ -340,7 +350,7 @@ fun PlayerHomeArenaSection(
                 slides = promoSlides,
                 onSlideClick = { slide ->
                     when {
-                        slide.openLudoArena -> onOpenLudo()
+                        slide.openLudoArena -> onOpenLudo("All")
                         slide.openReferTab -> onOpenRefer()
                         slide.actionSelection != null -> onOpenArenaFilter(slide.actionSelection)
                     }
@@ -363,13 +373,13 @@ fun PlayerHomeArenaSection(
                 ) {
                     MyContestTile(
                         label = "Upcoming",
-                        badgeCount = liveMatches.size,
+                        badgeCount = esportLiveMatches.size,
                         testTag = "contest_upcoming_card",
                         onClick = {
                             onOpenArenaFilter(
                                 ArenaFilterSelection(
                                     feed = "Live",
-                                    title = "Upcoming Matches (${liveMatches.size})"
+                                    title = "Upcoming Matches (${esportLiveMatches.size})"
                                 )
                             )
                         },
@@ -392,7 +402,7 @@ fun PlayerHomeArenaSection(
                     )
                     MyContestTile(
                         label = "Completed",
-                        badgeCount = completedMatches.size,
+                        badgeCount = esportCompletedMatches.size,
                         testTag = "contest_completed_card",
                         onClick = {
                             onOpenArenaFilter(
@@ -408,7 +418,7 @@ fun PlayerHomeArenaSection(
             }
         }
 
-        // 4b. Built-in Firebattle Ludo Quick Entry Card
+        // 4b. Dedicated Firebattle Ludo Slots Section (1vs1, 2vs2, 3vs3, 4vs4)
         item {
             Surface(
                 color = ArenaSlateDark,
@@ -417,70 +427,111 @@ fun PlayerHomeArenaSection(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(14.dp))
-                    .clickable(onClick = onOpenLudo)
+                    .clickable { onOpenLudo("All") }
                     .testTag("ludo_open_tile")
             ) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Image(
-                        painter = painterResource(id = R.drawable.img_tile_ludo),
-                        contentDescription = "Firebattle Ludo",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .size(64.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                    )
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        Image(
+                            painter = painterResource(id = R.drawable.img_tile_ludo),
+                            contentDescription = "Firebattle Ludo",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .size(62.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                        )
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
-                            Text(
-                                text = "FIREBATTLE LUDO",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = TextPrimary,
-                                fontWeight = FontWeight.ExtraBold
-                            )
-                            Surface(
-                                color = EmeraldWinContainer,
-                                shape = RoundedCornerShape(4.dp)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 Text(
-                                    text = "LIVE",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = EmeraldWin,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                    text = "FIREBATTLE LUDO",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = TextPrimary,
+                                    fontWeight = FontWeight.ExtraBold
                                 )
+                                Surface(
+                                    color = EmeraldWinContainer,
+                                    shape = RoundedCornerShape(4.dp)
+                                ) {
+                                    Text(
+                                        text = if (ludoLiveMatches.isNotEmpty()) "${ludoLiveMatches.size} LIVE" else "SLOTS",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = EmeraldWin,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "Separate Ludo Slots: 1vs1, 2vs2, 3vs3, 4vs4",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Surface(
+                            color = BlazeOrange,
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                text = "SLOTS",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = ArenaWhiteCard,
+                                fontWeight = FontWeight.ExtraBold,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)
+                            )
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf("1vs1", "2vs2", "3vs3", "4vs4").forEach { fmt ->
+                            val count = ludoLiveMatches.count { it.teamFormat == fmt }
+                            Surface(
+                                color = ArenaObsidian,
+                                shape = RoundedCornerShape(8.dp),
+                                border = BorderStroke(1.dp, ContestPurple.copy(alpha = 0.7f)),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { onOpenLudo(fmt) }
+                                    .testTag("home_ludo_format_$fmt")
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        text = fmt.replace("vs", "v"),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = CoinGold,
+                                        fontWeight = FontWeight.ExtraBold
+                                    )
+                                    Text(
+                                        text = if (count > 0) "$count Live" else "Open",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (count > 0) EmeraldWin else TextSecondary
+                                    )
+                                }
                             }
                         }
-                        Text(
-                            text = "1v1 Cash Tables • Smart Bot • 2P Pass & Play",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextSecondary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                    Surface(
-                        color = BlazeOrange,
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text(
-                            text = "PLAY",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = ArenaWhiteCard,
-                            fontWeight = FontWeight.ExtraBold,
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
-                        )
                     }
                 }
             }
@@ -504,7 +555,7 @@ fun PlayerHomeArenaSection(
                     modifier = Modifier.testTag("arena_view_all_matches")
                 ) {
                     Text(
-                        text = "View All (${liveMatches.size})",
+                        text = "View All (${esportLiveMatches.size})",
                         style = MaterialTheme.typography.labelLarge,
                         color = BlazeOrange,
                         fontWeight = FontWeight.Bold

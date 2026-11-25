@@ -69,6 +69,7 @@ private val RulesHeaderRed = Color(0xFFFF3B30)
 private fun bannerArtForMatch(match: TournamentMatch): Int {
     val mode = MatchMode.fromRaw(match.matchMode)
     return when {
+        match.game == GameTitle.LUDO.label || mode == MatchMode.LUDO -> R.drawable.img_tile_ludo
         match.game == GameTitle.BGMI.label -> R.drawable.img_game_bgmi
         mode == MatchMode.LONE_WOLF -> R.drawable.img_game_lonewolf
         mode == MatchMode.CLASH_SQUAD -> R.drawable.img_game_clash

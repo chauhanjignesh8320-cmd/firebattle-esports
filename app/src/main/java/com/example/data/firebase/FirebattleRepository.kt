@@ -836,9 +836,9 @@ class FirebattleRepository(
         return try {
             val uid = requireUserId()
             require(cleanTitle.length in 2..80) { "Title must be 2 to 80 characters." }
-            require(game == "Free Fire MAX" || game == "BGMI") { "Select Free Fire MAX or BGMI." }
-            require(matchMode in VALID_MATCH_MODES) { "Select Custom, Clash Squad, or Lone Wolf mode." }
-            require(teamFormat in VALID_TEAM_FORMATS) { "Select 1vs1, 2vs2, 4vs4, or Full Map." }
+            require(game == "Free Fire MAX" || game == "BGMI" || game == "Ludo") { "Select Free Fire MAX, BGMI, or Ludo." }
+            require(matchMode in VALID_MATCH_MODES) { "Select Custom, Clash Squad, Lone Wolf, or Ludo mode." }
+            require(teamFormat in VALID_TEAM_FORMATS) { "Select 1vs1, 2vs2, 3vs3, 4vs4, or Full Map." }
             require(cleanTime.length in 2..50) { "Match time must be 2 to 50 characters." }
             require(cleanMap.length in 2..40) { "Map name must be 2 to 40 characters." }
             require(entry in 0L..100_000L) { "Entry fee must be ₹0 to ₹1,00,000." }
@@ -1395,8 +1395,8 @@ class FirebattleRepository(
         private val PHONE_REGEX = Regex("^[0-9]{10}$")
         private val REFERRAL_CODE_REGEX = Regex("^[A-Z0-9]{6,16}$")
         private val OWNER_UPI_REGEX = Regex("^[^\\s@]+@[^\\s@]+$")
-        private val VALID_MATCH_MODES = setOf("Custom", "Clash Squad", "Lone Wolf")
-        private val VALID_TEAM_FORMATS = setOf("1vs1", "2vs2", "4vs4", "Full Map")
+        private val VALID_MATCH_MODES = setOf("Custom", "Clash Squad", "Lone Wolf", "Ludo")
+        private val VALID_TEAM_FORMATS = setOf("1vs1", "2vs2", "3vs3", "4vs4", "Full Map")
         const val BOOTSTRAPPED_ADMIN_EMAIL = "chauhanjignesh8320@gmail.com"
     }
 }

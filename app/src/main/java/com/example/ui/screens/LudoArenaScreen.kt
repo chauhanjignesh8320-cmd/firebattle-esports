@@ -2,10 +2,8 @@ package com.example.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,23 +13,17 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Casino
-import androidx.compose.material.icons.filled.Groups
-import androidx.compose.material.icons.filled.Login
-import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -40,42 +32,36 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.R
 import com.example.data.model.LudoPlayMode
-import com.example.data.model.LudoRoom
 import com.example.data.model.LudoRoomStatus
+import com.example.data.model.MatchRegistration
+import com.example.data.model.TeamFormat
+import com.example.data.model.TournamentMatch
 import com.example.data.model.UiState
 import com.example.data.model.UserProfile
 import com.example.ludo.LudoEngine
 import com.example.ui.components.EmptyArenaState
 import com.example.ui.components.ErrorBannerCard
-import com.example.ui.components.StatusBadge
 import com.example.ui.components.hasInternetConnection
 import com.example.ui.theme.ArenaObsidian
 import com.example.ui.theme.ArenaSlateBorder
@@ -86,7 +72,6 @@ import com.example.ui.theme.CoinGold
 import com.example.ui.theme.ContestPurple
 import com.example.ui.theme.EmeraldWin
 import com.example.ui.theme.EmeraldWinContainer
-import com.example.ui.theme.JetBrainsMonoFamily
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
 import com.example.ui.viewmodel.LudoViewModel
@@ -95,6 +80,14 @@ import com.example.ui.viewmodel.LudoViewModel
 fun LudoArenaScreen(
     ludoViewModel: LudoViewModel,
     profile: UserProfile,
+    liveLudoMatches: List<TournamentMatch>,
+    completedLudoMatches: List<TournamentMatch>,
+    joinedIds: Set<String>,
+    myRegistrations: List<MatchRegistration>,
+    initialFormatFilter: String = "All",
+    isMatchBusy: Boolean = false,
+    onRequestJoinMatch: (TournamentMatch) -> Unit,
+    onInspectMatch: (TournamentMatch) -> Unit,
     onBackToHome: () -> Unit,
     onOpenWallet: () -> Unit,
     onCopyFeedback: (String) -> Unit,
@@ -108,16 +101,28 @@ fun LudoArenaScreen(
     val myRoomsState by ludoViewModel.myRoomsState.collectAsStateWithLifecycle()
     val isBusy by ludoViewModel.isBusy.collectAsStateWithLifecycle()
 
+    var showBoardHub by rememberSaveable { mutableStateOf(false) }
+    var feedFilter by rememberSaveable { mutableStateOf("Upcoming") }
+    var formatFilter by rememberSaveable(initialFormatFilter) { mutableStateOf(initialFormatFilter) }
+
+    LaunchedEffect(initialFormatFilter) {
+        formatFilter = initialFormatFilter
+    }
+
+    val myRegByMatch = remember(myRegistrations) { myRegistrations.associateBy { it.matchId } }
     val isLocalActive = localState.mode == LudoPlayMode.VS_BOT || localState.mode == LudoPlayMode.PASS_AND_PLAY
     val isOnlineActive = !activeRoomId.isNullOrBlank()
 
-    BackHandler {
+    val navigateBackStep = {
         when {
             isLocalActive -> ludoViewModel.exitLocalMatch()
             isOnlineActive -> ludoViewModel.closeActiveRoom()
+            showBoardHub -> showBoardHub = false
             else -> onBackToHome()
         }
     }
+
+    BackHandler { navigateBackStep() }
 
     Column(
         modifier = modifier
@@ -135,13 +140,7 @@ fun LudoArenaScreen(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                 IconButton(
-                    onClick = {
-                        when {
-                            isLocalActive -> ludoViewModel.exitLocalMatch()
-                            isOnlineActive -> ludoViewModel.closeActiveRoom()
-                            else -> onBackToHome()
-                        }
-                    },
+                    onClick = navigateBackStep,
                     modifier = Modifier
                         .minimumInteractiveComponentSize()
                         .testTag("ludo_back_button")
@@ -156,8 +155,9 @@ fun LudoArenaScreen(
                     text = when {
                         localState.mode == LudoPlayMode.VS_BOT -> "Ludo vs Smart Bot"
                         localState.mode == LudoPlayMode.PASS_AND_PLAY -> "Ludo Pass & Play"
-                        isOnlineActive -> "1v1 Online Ludo"
-                        else -> "Firebattle Ludo"
+                        isOnlineActive -> "In-App Ludo Board"
+                        showBoardHub -> "Play In-App Board"
+                        else -> "FIREBATTLE LUDO"
                     },
                     style = MaterialTheme.typography.titleMedium,
                     color = TextPrimary,
@@ -167,37 +167,71 @@ fun LudoArenaScreen(
                 )
             }
 
-            Surface(
-                color = EmeraldWinContainer,
-                shape = RoundedCornerShape(50),
-                border = BorderStroke(1.dp, EmeraldWin.copy(alpha = 0.5f)),
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .clickable(onClick = onOpenWallet)
-                    .testTag("ludo_wallet_pill")
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                if (!showBoardHub && !isLocalActive && !isOnlineActive) {
+                    Surface(
+                        color = BlazeOrange,
+                        shape = RoundedCornerShape(50),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .clickable { showBoardHub = true }
+                            .testTag("ludo_switch_to_board_button")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Casino,
+                                contentDescription = "Open playable Ludo board",
+                                tint = ArenaWhiteCard,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Text(
+                                text = "Board",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = ArenaWhiteCard,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
+                    }
+                }
+
+                Surface(
+                    color = EmeraldWinContainer,
+                    shape = RoundedCornerShape(50),
+                    border = BorderStroke(1.dp, EmeraldWin.copy(alpha = 0.5f)),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .clickable(onClick = onOpenWallet)
+                        .testTag("ludo_wallet_pill")
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.AccountBalanceWallet,
-                        contentDescription = "Wallet",
-                        tint = EmeraldWin,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Text(
-                        text = "₹${profile.wallet}",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = EmeraldWin,
-                        fontWeight = FontWeight.ExtraBold
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.AccountBalanceWallet,
+                            contentDescription = "Wallet",
+                            tint = EmeraldWin,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Text(
+                            text = "₹${profile.wallet}",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = EmeraldWin,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    }
                 }
             }
         }
 
-        // Body Router
         when {
             isLocalActive -> {
                 val winnerName = when (localState.winnerSlot) {
@@ -288,7 +322,7 @@ fun LudoArenaScreen(
                                         onClick = { ludoViewModel.closeActiveRoom() },
                                         colors = ButtonDefaults.buttonColors(containerColor = BlazeOrange)
                                     ) {
-                                        Text("Back to Ludo Lobby", fontWeight = FontWeight.Bold)
+                                        Text("Back to Board Hub", fontWeight = FontWeight.Bold)
                                     }
                                 }
 
@@ -341,7 +375,7 @@ fun LudoArenaScreen(
                 }
             }
 
-            else -> LudoLobbyContent(
+            showBoardHub -> LudoBuiltInBoardHub(
                 profile = profile,
                 waitingRoomsState = waitingRoomsState,
                 myRoomsState = myRoomsState,
@@ -350,7 +384,7 @@ fun LudoArenaScreen(
                 onPlayPassAndPlay = { ludoViewModel.startPassAndPlayMatch(profile.ign, "Friend") },
                 onCreateCashTable = { entry ->
                     if (!hasInternetConnection(context)) {
-                        onCopyFeedback("Turn on internet to host an online Ludo table.")
+                        onCopyFeedback("Turn on internet to host an online Ludo board.")
                     } else if (entry > profile.wallet) {
                         onCopyFeedback("Insufficient wallet balance (need ₹$entry). Opening Wallet...")
                         onOpenWallet()
@@ -360,16 +394,16 @@ fun LudoArenaScreen(
                 },
                 onJoinByCode = { code ->
                     if (!hasInternetConnection(context)) {
-                        onCopyFeedback("Turn on internet to join a Ludo room.")
+                        onCopyFeedback("Turn on internet to join a Ludo board.")
                     } else {
                         ludoViewModel.joinByCode(code, profile)
                     }
                 },
                 onJoinRoom = { room ->
                     if (!hasInternetConnection(context)) {
-                        onCopyFeedback("Turn on internet to join a Ludo room.")
+                        onCopyFeedback("Turn on internet to join a Ludo board.")
                     } else if (room.entry > profile.wallet) {
-                        onCopyFeedback("Need ₹${room.entry} to join this table. Add Money in Wallet.")
+                        onCopyFeedback("Need ₹${room.entry} to join this board. Add Money in Wallet.")
                         onOpenWallet()
                     } else {
                         ludoViewModel.joinRoom(room.id, profile)
@@ -378,464 +412,186 @@ fun LudoArenaScreen(
                 onOpenRoom = { roomId -> ludoViewModel.openOnlineRoom(roomId) },
                 onCancelRoom = { roomId -> ludoViewModel.cancelRoom(roomId) }
             )
-        }
-    }
-}
 
-@Composable
-private fun LudoLobbyContent(
-    profile: UserProfile,
-    waitingRoomsState: UiState<List<LudoRoom>>,
-    myRoomsState: UiState<List<LudoRoom>>,
-    isBusy: Boolean,
-    onPlayBot: () -> Unit,
-    onPlayPassAndPlay: () -> Unit,
-    onCreateCashTable: (Long) -> Unit,
-    onJoinByCode: (String) -> Unit,
-    onJoinRoom: (LudoRoom) -> Unit,
-    onOpenRoom: (String) -> Unit,
-    onCancelRoom: (String) -> Unit
-) {
-    var selectedEntry by rememberSaveable { mutableLongStateOf(20L) }
-    var customEntryText by rememberSaveable { mutableStateOf("") }
-    var joinCodeText by rememberSaveable { mutableStateOf("") }
-
-    val effectiveEntry = customEntryText.toLongOrNull()?.coerceIn(0L, 10_000L) ?: selectedEntry
-    val prizePreview = LudoRoom.calculatePrizePool(effectiveEntry)
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(14.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        // 1. Hero Artwork Banner
-        item {
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                border = BorderStroke(1.dp, ArenaSlateBorder),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(148.dp)
-            ) {
-                Box(modifier = Modifier.fillMaxSize()) {
-                    Image(
-                        painter = painterResource(id = R.drawable.img_tile_ludo),
-                        contentDescription = "Firebattle Ludo",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.horizontalGradient(
-                                    colors = listOf(
-                                        ArenaObsidian.copy(alpha = 0.92f),
-                                        ArenaObsidian.copy(alpha = 0.45f)
-                                    )
-                                )
-                            )
-                    )
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Surface(
-                            color = BlazeOrange,
-                            shape = RoundedCornerShape(6.dp)
-                        ) {
-                            Text(
-                                text = "1v1 INSTANT LUDO",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = ArenaWhiteCard,
-                                fontWeight = FontWeight.ExtraBold,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                            )
-                        }
-                        Text(
-                            text = "Play Cash Battles, Smart Bot\nor 2P Pass & Play",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = TextPrimary,
-                            fontWeight = FontWeight.ExtraBold
-                        )
-                        Text(
-                            text = "Instant wallet win credit • Fair live board",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = CoinGold
-                        )
-                    }
-                }
-            }
-        }
-
-        // 2. Quick Offline Modes: Smart Bot & Pass and Play
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Surface(
-                    color = ArenaSlateDark,
-                    shape = RoundedCornerShape(14.dp),
-                    border = BorderStroke(1.dp, ContestPurple.copy(alpha = 0.65f)),
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(14.dp))
-                        .clickable(onClick = onPlayBot)
-                        .testTag("ludo_play_bot_button")
-                ) {
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(Icons.Filled.SmartToy, contentDescription = null, tint = CoinGold)
-                        Text("Play vs Bot", style = MaterialTheme.typography.titleSmall, color = TextPrimary, fontWeight = FontWeight.Bold)
-                        Text("Free offline AI match", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-                    }
-                }
-
-                Surface(
-                    color = ArenaSlateDark,
-                    shape = RoundedCornerShape(14.dp),
-                    border = BorderStroke(1.dp, EmeraldWin.copy(alpha = 0.55f)),
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(14.dp))
-                        .clickable(onClick = onPlayPassAndPlay)
-                        .testTag("ludo_pass_and_play_button")
-                ) {
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(Icons.Filled.Groups, contentDescription = null, tint = EmeraldWin)
-                        Text("Pass & Play", style = MaterialTheme.typography.titleSmall, color = TextPrimary, fontWeight = FontWeight.Bold)
-                        Text("2 Players same phone", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-                    }
-                }
-            }
-        }
-
-        // 3. Create 1v1 Online Cash/Free Table Card
-        item {
-            Surface(
-                color = ArenaSlateDark,
-                shape = RoundedCornerShape(16.dp),
-                border = BorderStroke(1.dp, ArenaSlateBorder),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(Icons.Filled.Casino, contentDescription = null, tint = BlazeOrange)
-                            Text(
-                                text = "Host 1v1 Online Table",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = TextPrimary,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        Text(
-                            text = if (effectiveEntry > 0L) "Win ₹$prizePreview" else "Free",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = EmeraldWin,
-                            fontWeight = FontWeight.ExtraBold
-                        )
-                    }
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        listOf(0L, 10L, 20L, 50L, 100L).forEach { preset ->
-                            val selected = customEntryText.isBlank() && selectedEntry == preset
-                            FilterChip(
-                                selected = selected,
-                                onClick = {
-                                    customEntryText = ""
-                                    selectedEntry = preset
-                                },
-                                label = {
-                                    Text(
-                                        text = if (preset == 0L) "Free ₹0" else "₹$preset → ₹${LudoRoom.calculatePrizePool(preset)}",
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = BlazeOrange,
-                                    selectedLabelColor = ArenaWhiteCard,
-                                    containerColor = ArenaObsidian,
-                                    labelColor = TextSecondary
-                                ),
-                                modifier = Modifier.testTag("ludo_entry_chip_$preset")
-                            )
-                        }
-                    }
-
-                    OutlinedTextField(
-                        value = customEntryText,
-                        onValueChange = { customEntryText = it.filter { ch -> ch.isDigit() }.take(5) },
-                        label = { Text("Custom Entry ₹ (Optional, 0-10000)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    Button(
-                        enabled = !isBusy,
-                        onClick = { onCreateCashTable(effectiveEntry) },
-                        colors = ButtonDefaults.buttonColors(containerColor = BlazeOrange, contentColor = ArenaWhiteCard),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 48.dp)
-                            .testTag("ludo_create_table_button")
-                    ) {
-                        Text(
-                            text = if (effectiveEntry > 0L) {
-                                "Create Table (Pay ₹$effectiveEntry • Win ₹$prizePreview)"
-                            } else {
-                                "Create Free Table"
-                            },
-                            fontWeight = FontWeight.ExtraBold
-                        )
-                    }
-                }
-            }
-        }
-
-        // 4. Join Room by Code
-        item {
-            Surface(
-                color = ArenaSlateDark,
-                shape = RoundedCornerShape(16.dp),
-                border = BorderStroke(1.dp, ArenaSlateBorder),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    OutlinedTextField(
-                        value = joinCodeText,
-                        onValueChange = { joinCodeText = it.uppercase().filter { ch -> ch.isLetterOrDigit() }.take(10) },
-                        label = { Text("Room Code (e.g. LD4K9A)") },
-                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
-                        singleLine = true,
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("ludo_room_code_input")
-                    )
-                    Button(
-                        enabled = !isBusy && joinCodeText.length >= 4,
-                        onClick = { onJoinByCode(joinCodeText) },
-                        colors = ButtonDefaults.buttonColors(containerColor = EmeraldWin, contentColor = ArenaObsidian),
-                        modifier = Modifier
-                            .heightIn(min = 52.dp)
-                            .testTag("ludo_join_code_button")
-                    ) {
-                        Icon(Icons.Filled.Login, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Join", fontWeight = FontWeight.ExtraBold)
-                    }
-                }
-            }
-        }
-
-        // 5. Open Waiting Tables
-        item {
-            Text(
-                text = "Open Online Tables",
-                style = MaterialTheme.typography.titleMedium,
-                color = TextPrimary,
-                fontWeight = FontWeight.Bold
+            else -> LudoSlotsTournamentFeed(
+                liveLudoMatches = liveLudoMatches,
+                completedLudoMatches = completedLudoMatches,
+                joinedIds = joinedIds,
+                myRegByMatch = myRegByMatch,
+                feedFilter = feedFilter,
+                formatFilter = formatFilter,
+                isMatchBusy = isMatchBusy,
+                onSelectFeed = { feedFilter = it },
+                onSelectFormat = { formatFilter = it },
+                onJoinMatchClick = onRequestJoinMatch,
+                onViewMoreMatchClick = onInspectMatch,
+                onOpenBoardHub = { showBoardHub = true }
             )
         }
-
-        when (waitingRoomsState) {
-            is UiState.Loading -> item {
-                Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = BlazeOrange)
-                }
-            }
-            is UiState.Error -> item { ErrorBannerCard(waitingRoomsState.message) }
-            is UiState.Success -> {
-                val tables = waitingRoomsState.data
-                if (tables.isEmpty()) {
-                    item {
-                        EmptyArenaState(
-                            title = "No Waiting Ludo Tables",
-                            subtitle = "Create a table above or play vs Smart Bot while waiting!"
-                        )
-                    }
-                } else {
-                    items(tables, key = { "wait_${it.id}" }) { room ->
-                        val isMine = room.hostUid == profile.userId
-                        LudoRoomCard(
-                            room = room,
-                            isMine = isMine,
-                            currentUserId = profile.userId,
-                            isBusy = isBusy,
-                            onJoin = { onJoinRoom(room) },
-                            onOpen = { onOpenRoom(room.id) },
-                            onCancel = { onCancelRoom(room.id) }
-                        )
-                    }
-                }
-            }
-        }
-
-        // 6. My Active & Recent Ludo Matches
-        val myRooms = (myRoomsState as? UiState.Success)?.data.orEmpty()
-        if (myRooms.isNotEmpty()) {
-            item {
-                Text(
-                    text = "My Ludo Matches",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = CoinGold,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-            items(myRooms.take(10), key = { "mine_${it.id}" }) { room ->
-                LudoRoomCard(
-                    room = room,
-                    isMine = room.hostUid == profile.userId,
-                    currentUserId = profile.userId,
-                    isBusy = isBusy,
-                    onJoin = { onOpenRoom(room.id) },
-                    onOpen = { onOpenRoom(room.id) },
-                    onCancel = { onCancelRoom(room.id) }
-                )
-            }
-        }
     }
 }
 
 @Composable
-private fun LudoRoomCard(
-    room: LudoRoom,
-    isMine: Boolean,
-    currentUserId: String,
-    isBusy: Boolean,
-    onJoin: () -> Unit,
-    onOpen: () -> Unit,
-    onCancel: () -> Unit
+private fun LudoSlotsTournamentFeed(
+    liveLudoMatches: List<TournamentMatch>,
+    completedLudoMatches: List<TournamentMatch>,
+    joinedIds: Set<String>,
+    myRegByMatch: Map<String, MatchRegistration>,
+    feedFilter: String,
+    formatFilter: String,
+    isMatchBusy: Boolean,
+    onSelectFeed: (String) -> Unit,
+    onSelectFormat: (String) -> Unit,
+    onJoinMatchClick: (TournamentMatch) -> Unit,
+    onViewMoreMatchClick: (TournamentMatch) -> Unit,
+    onOpenBoardHub: () -> Unit
 ) {
-    val status = LudoRoomStatus.fromRaw(room.status)
-    Surface(
-        color = ArenaSlateDark,
-        shape = RoundedCornerShape(14.dp),
-        border = BorderStroke(1.dp, if (status == LudoRoomStatus.PLAYING) CoinGold.copy(alpha = 0.6f) else ArenaSlateBorder),
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag("ludo_room_card_${room.id}")
-    ) {
+    val activeSource = if (feedFilter == "Results") completedLudoMatches else liveLudoMatches
+    val filteredMatches = remember(activeSource, feedFilter, formatFilter, joinedIds) {
+        val byFormat = activeSource.filter { match ->
+            val fmt = TeamFormat.fromRaw(match.teamFormat).label
+            formatFilter == "All" || fmt == formatFilter
+        }
+        when (feedFilter) {
+            "Ongoing" -> byFormat.filter { it.id in joinedIds || it.roomId.isNotBlank() }
+            else -> byFormat
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        // Purple 3-Tab Strip matching FF/BGMI Tournament Feed
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .background(ContestPurple)
         ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+            listOf("Ongoing", "Upcoming", "Results").forEach { tabKey ->
+                val selected = feedFilter == tabKey
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { onSelectFeed(tabKey) }
+                        .testTag("ludo_feed_${tabKey.lowercase()}"),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = room.roomCode,
+                        text = tabKey.uppercase(),
                         style = MaterialTheme.typography.labelLarge,
-                        fontFamily = JetBrainsMonoFamily,
-                        color = CoinGold,
-                        fontWeight = FontWeight.ExtraBold
+                        color = if (selected) Color.White else Color.White.copy(alpha = 0.72f),
+                        fontWeight = FontWeight.ExtraBold,
+                        modifier = Modifier.padding(vertical = 12.dp)
                     )
-                    Text(
-                        text = if (room.entry > 0L) "Entry ₹${room.entry} • Win ₹${room.prizePool}" else "Free Match",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = TextPrimary,
-                        fontWeight = FontWeight.Bold
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .background(if (selected) Color.White else Color.Transparent)
                     )
                 }
-                Text(
-                    text = when (status) {
-                        LudoRoomStatus.WAITING -> "Host: ${room.hostIgn} • Waiting"
-                        LudoRoomStatus.PLAYING -> "${room.hostIgn} vs ${room.guestIgn} • LIVE"
-                        LudoRoomStatus.COMPLETED -> if (room.winnerUid == currentUserId) "You Won${if (room.prizePool > 0L) " ₹${room.prizePool}" else ""}!" else "Winner: ${room.winnerIgn}"
-                        LudoRoomStatus.CANCELLED -> "Cancelled & Refunded"
+            }
+        }
+
+        // Dedicated Ludo Format Strip: All | 1vs1 | 2vs2 | 3vs3 | 4vs4
+        LazyRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(ArenaSlateDark)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            val formatOptions = listOf("All", "1vs1", "2vs2", "3vs3", "4vs4")
+            items(formatOptions) { fmt ->
+                val count = if (fmt == "All") {
+                    activeSource.size
+                } else {
+                    activeSource.count { TeamFormat.fromRaw(it.teamFormat).label == fmt }
+                }
+                val selected = formatFilter == fmt
+                FilterChip(
+                    selected = selected,
+                    onClick = { onSelectFormat(fmt) },
+                    label = {
+                        Text(
+                            text = if (count > 0) "$fmt ($count)" else fmt,
+                            fontWeight = FontWeight.Bold
+                        )
                     },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = BlazeOrange,
+                        selectedLabelColor = ArenaWhiteCard,
+                        containerColor = ArenaObsidian,
+                        labelColor = TextSecondary
+                    ),
+                    modifier = Modifier.testTag("ludo_format_chip_$fmt")
                 )
             }
+        }
 
-            Spacer(modifier = Modifier.width(10.dp))
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            if (filteredMatches.isEmpty()) {
+                item {
+                    EmptyArenaState(
+                        title = when {
+                            formatFilter != "All" -> "No $formatFilter Ludo Matches Yet"
+                            feedFilter == "Ongoing" -> "No Ongoing Ludo Matches"
+                            feedFilter == "Results" -> "No Ludo Results Yet"
+                            else -> "No Ludo Slots Open Yet"
+                        },
+                        subtitle = "Admin can publish Ludo 1vs1, 2vs2, 3vs3 & 4vs4 slot matches from Admin Panel, or try our In-App Ludo Board below."
+                    )
+                }
+            } else {
+                items(filteredMatches, key = { it.id }) { match ->
+                    TournamentMatchCard(
+                        match = match,
+                        alreadyJoined = match.id in joinedIds,
+                        myRegistration = myRegByMatch[match.id],
+                        isBusy = isMatchBusy,
+                        onJoinClick = { onJoinMatchClick(match) },
+                        onViewMoreClick = { onViewMoreMatchClick(match) }
+                    )
+                }
+            }
 
-            when (status) {
-                LudoRoomStatus.WAITING -> {
-                    if (isMine) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            OutlinedButton(
-                                enabled = !isBusy,
-                                onClick = onCancel,
-                                border = BorderStroke(1.dp, Color(0xFFEF4444)),
-                                modifier = Modifier.heightIn(min = 44.dp)
-                            ) {
-                                Text("Cancel", color = Color(0xFFEF4444), fontWeight = FontWeight.Bold)
-                            }
-                            Button(
-                                onClick = onOpen,
-                                colors = ButtonDefaults.buttonColors(containerColor = BlazeOrange),
-                                modifier = Modifier.heightIn(min = 44.dp)
-                            ) {
-                                Text("Open", fontWeight = FontWeight.Bold)
-                            }
+            item {
+                Surface(
+                    color = ArenaSlateDark,
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, ArenaSlateBorder),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable(onClick = onOpenBoardHub)
+                        .testTag("ludo_practice_board_banner")
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = "In-App 15×15 Playable Ludo Board",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = CoinGold,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Play vs Smart Bot, Pass & Play or Room Code",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
+                            )
                         }
-                    } else {
-                        Button(
-                            enabled = !isBusy,
-                            onClick = onJoin,
-                            colors = ButtonDefaults.buttonColors(containerColor = EmeraldWin, contentColor = ArenaObsidian),
-                            modifier = Modifier
-                                .widthIn(min = 88.dp)
-                                .heightIn(min = 44.dp)
-                                .testTag("ludo_join_room_button_${room.id}")
-                        ) {
-                            Text(if (room.entry > 0L) "Join ₹${room.entry}" else "Join", fontWeight = FontWeight.ExtraBold)
-                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Icon(Icons.Filled.Casino, contentDescription = null, tint = BlazeOrange)
                     }
                 }
-
-                LudoRoomStatus.PLAYING -> Button(
-                    onClick = onOpen,
-                    colors = ButtonDefaults.buttonColors(containerColor = CoinGold, contentColor = ArenaObsidian),
-                    modifier = Modifier.heightIn(min = 44.dp)
-                ) {
-                    Text("Resume", fontWeight = FontWeight.ExtraBold)
-                }
-
-                LudoRoomStatus.COMPLETED -> StatusBadge(
-                    status = if (room.winnerUid == currentUserId) "Approved" else "Rejected"
-                )
-
-                LudoRoomStatus.CANCELLED -> StatusBadge(status = "Rejected")
             }
         }
     }

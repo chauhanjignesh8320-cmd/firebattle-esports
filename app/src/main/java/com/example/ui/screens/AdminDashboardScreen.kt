@@ -577,7 +577,7 @@ private fun AdminTabBody(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    items(listOf("All", "Lone Wolf", "Clash Squad", "Custom")) { modeOpt ->
+                                    items(listOf("All", "Ludo", "Lone Wolf", "Clash Squad", "Custom")) { modeOpt ->
                                         androidx.compose.material3.FilterChip(
                                             selected = adminModeFilter == modeOpt,
                                             onClick = { adminModeFilter = modeOpt },
@@ -595,7 +595,7 @@ private fun AdminTabBody(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    items(listOf("All", "1vs1", "2vs2", "4vs4", "Full Map")) { fmtOpt ->
+                                    items(listOf("All", "1vs1", "2vs2", "3vs3", "4vs4", "Full Map")) { fmtOpt ->
                                         androidx.compose.material3.FilterChip(
                                             selected = adminFormatFilter == fmtOpt,
                                             onClick = { adminFormatFilter = fmtOpt },
