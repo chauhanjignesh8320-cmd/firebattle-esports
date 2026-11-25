@@ -129,6 +129,13 @@ service cloud.firestore {
              data.note is string && data.note.size() <= 100;
     }
 
+    function isValidAppInstall(data) {
+      return data.installId is string && isValidId(data.installId) &&
+             data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.deviceModel is string && data.deviceModel.size() >= 1 && data.deviceModel.size() <= 80 &&
+             data.appVersion is string && data.appVersion.size() >= 1 && data.appVersion.size() <= 30;
+    }
+
     match /admins/{adminUid} {
       allow get: if isSignedIn() && isValidId(adminUid) && request.auth.uid == adminUid;
       allow list, create, update, delete: if false;
@@ -437,6 +444,34 @@ service cloud.firestore {
                        incoming().createdAt is timestamp &&
                        incoming().createdAt <= request.time;
       allow update, delete: if false;
+    }
+
+    match /appInstalls/{installId} {
+      allow get: if isSignedIn() && isValidId(installId) && (
+                    isAdmin() ||
+                    resource == null ||
+                    resource.data.userId == request.auth.uid
+                  );
+      allow list: if isAdmin();
+      allow create: if isSignedIn() &&
+                       isValidId(installId) &&
+                       incoming().installId == installId &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll(['installId', 'userId', 'deviceModel', 'appVersion', 'firstSeenAt', 'lastActiveAt']) &&
+                       incoming().keys().hasOnly(['installId', 'userId', 'deviceModel', 'appVersion', 'firstSeenAt', 'lastActiveAt']) &&
+                       isValidAppInstall(incoming()) &&
+                       incoming().firstSeenAt is timestamp && incoming().firstSeenAt <= request.time &&
+                       incoming().lastActiveAt is timestamp && incoming().lastActiveAt <= request.time;
+      allow update: if isSignedIn() &&
+                       isValidId(installId) &&
+                       existing().userId == request.auth.uid &&
+                       incoming().installId == existing().installId &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().firstSeenAt == existing().firstSeenAt &&
+                       isValidAppInstall(incoming()) &&
+                       incoming().lastActiveAt is timestamp && incoming().lastActiveAt <= request.time &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['userId', 'deviceModel', 'appVersion', 'lastActiveAt']);
+      allow delete: if false;
     }
   }
 }

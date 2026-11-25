@@ -1604,5 +1604,93 @@ test("Deposited & Bonus money must be played to win before withdrawal (winningBa
   await assertSucceeds(validWinWd.commit());
 });
 
+test("appInstalls tracks unique devices securely with admin-only listing", async () => {
+  const unauthDb = testEnv.unauthenticatedContext().firestore();
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+  const bobDb = testEnv.authenticatedContext(BOB_UID).firestore();
+  const adminDb = adminContext().firestore();
+
+  // Unauthenticated cannot create or list appInstalls
+  await assertFails(unauthDb.collection("appInstalls").get());
+  await assertFails(
+    unauthDb.collection("appInstalls").doc("inst_unauth_1").set({
+      installId: "inst_unauth_1",
+      userId: ALICE_UID,
+      deviceModel: "Xiaomi Redmi",
+      appVersion: "1.0",
+      firstSeenAt: pastDate(5000),
+      lastActiveAt: pastDate(5000),
+    })
+  );
+
+  // Alice cannot spoof Bob's userId or mismatch doc ID
+  await assertFails(
+    aliceDb.collection("appInstalls").doc("inst_alice_1").set({
+      installId: "inst_alice_1",
+      userId: BOB_UID,
+      deviceModel: "Xiaomi Redmi",
+      appVersion: "1.0",
+      firstSeenAt: pastDate(5000),
+      lastActiveAt: pastDate(5000),
+    })
+  );
+  await assertFails(
+    aliceDb.collection("appInstalls").doc("inst_alice_1").set({
+      installId: "wrong_id",
+      userId: ALICE_UID,
+      deviceModel: "Xiaomi Redmi",
+      appVersion: "1.0",
+      firstSeenAt: pastDate(5000),
+      lastActiveAt: pastDate(5000),
+    })
+  );
+
+  // Alice creates her own device install record
+  await assertSucceeds(
+    aliceDb.collection("appInstalls").doc("inst_alice_1").set({
+      installId: "inst_alice_1",
+      userId: ALICE_UID,
+      deviceModel: "Xiaomi Redmi",
+      appVersion: "1.0",
+      firstSeenAt: pastDate(6000),
+      lastActiveAt: pastDate(6000),
+    })
+  );
+
+  // Alice can update lastActiveAt while preserving firstSeenAt
+  await assertSucceeds(
+    aliceDb.collection("appInstalls").doc("inst_alice_1").update({
+      userId: ALICE_UID,
+      deviceModel: "Xiaomi Redmi Note 12",
+      appVersion: "1.0",
+      lastActiveAt: pastDate(3000),
+    })
+  );
+
+  // Alice cannot mutate immutable firstSeenAt
+  await assertFails(
+    aliceDb.collection("appInstalls").doc("inst_alice_1").update({
+      firstSeenAt: pastDate(1000),
+      lastActiveAt: pastDate(1000),
+    })
+  );
+
+  // Cross-user read/update/list denied
+  await assertFails(bobDb.collection("appInstalls").doc("inst_alice_1").get());
+  await assertFails(
+    bobDb.collection("appInstalls").doc("inst_alice_1").update({
+      userId: BOB_UID,
+      deviceModel: "Hijacked",
+      appVersion: "1.0",
+      lastActiveAt: pastDate(1000),
+    })
+  );
+  await assertFails(aliceDb.collection("appInstalls").get());
+
+  // Admin can list all installed devices
+  await assertSucceeds(adminDb.collection("appInstalls").get());
+});
+
+
 
 

@@ -1,7 +1,10 @@
 package com.example
 
+import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
+import java.util.UUID
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -187,6 +190,25 @@ private fun AuthenticatedArenaShell(
         }
     }
 
+    LaunchedEffect(currentUserId) {
+        val prefs = context.getSharedPreferences("firebattle_prefs", Context.MODE_PRIVATE)
+        val installId = prefs.getString("install_id", null)?.takeIf { it.isNotBlank() } ?: run {
+            val generated = "inst_${UUID.randomUUID().toString().replace("-", "").take(24)}"
+            prefs.edit().putString("install_id", generated).apply()
+            generated
+        }
+        val deviceModel = listOf(Build.MANUFACTURER, Build.MODEL)
+            .filter { it.isNotBlank() }
+            .joinToString(" ")
+            .distinctSpaceTrimmed()
+            .ifBlank { "Android Device" }
+        playerViewModel.recordDeviceInstallHeartbeat(
+            installId = installId,
+            deviceModel = deviceModel,
+            appVersion = BuildConfig.VERSION_NAME
+        )
+    }
+
     val handleLogout = {
         signOut(
             credentialManager = credentialManager,
@@ -311,6 +333,8 @@ private fun AuthenticatedArenaShell(
                             val allWithdrawals by adminViewModel.allWithdrawalsState.collectAsStateWithLifecycle()
                             val ownerPayouts by adminViewModel.ownerPayoutsState.collectAsStateWithLifecycle()
                             val allUsers by adminViewModel.allUsersState.collectAsStateWithLifecycle()
+                            val allAppInstalls by adminViewModel.allAppInstallsState.collectAsStateWithLifecycle()
+                            val apkDownloadsCount by adminViewModel.apkDownloadsCount.collectAsStateWithLifecycle()
                             val adminSettings by adminViewModel.settingsState.collectAsStateWithLifecycle()
                             val adminBusy by adminViewModel.isBusy.collectAsStateWithLifecycle()
 
@@ -321,9 +345,12 @@ private fun AuthenticatedArenaShell(
                                 withdrawalsState = allWithdrawals,
                                 ownerPayoutsState = ownerPayouts,
                                 usersState = allUsers,
+                                appInstallsState = allAppInstalls,
+                                apkDownloadsCount = apkDownloadsCount,
                                 settingsState = adminSettings,
                                 isBusy = adminBusy,
                                 onBackToPlayer = { currentMode = AppMode.PLAYER },
+                                onRefreshApkDownloads = { adminViewModel.refreshApkDownloadCount() },
                                 onCreateMatch = { title, game, matchMode, teamFormat, time, mapName, entry, perKill, prize, slots, rules, onSuccess ->
                                     adminViewModel.createMatch(
                                         title = title,
@@ -437,3 +464,6 @@ private fun AuthenticatedArenaShell(
         }
     }
 }
+
+private fun String.distinctSpaceTrimmed(): String =
+    trim().replace(Regex("\\s+"), " ")

@@ -279,3 +279,15 @@ data class OwnerPayout(
     val note: String = "",
     @ServerTimestamp val createdAt: Timestamp? = null
 )
+
+@Keep
+@IgnoreExtraProperties
+data class AppInstall(
+    @DocumentId val id: String = "",
+    val installId: String = "",
+    val userId: String = "",
+    val deviceModel: String = "",
+    val appVersion: String = "",
+    @ServerTimestamp val firstSeenAt: Timestamp? = null,
+    @ServerTimestamp val lastActiveAt: Timestamp? = null
+)

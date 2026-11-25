@@ -2,6 +2,7 @@ package com.example.data.firebase
 
 import android.content.Context
 import com.example.R
+import com.example.data.model.AppInstall
 import com.example.data.model.AppSettings
 import com.example.data.model.DEFAULT_APP_DOWNLOAD_URL
 import com.example.data.model.LEGACY_APK_DOWNLOAD_URL
@@ -277,6 +278,19 @@ class FirebattleRepository(
                 .map { snapshot ->
                     snapshot.toObjects(UserProfile::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
                         .sortedByDescending { it.createdAt ?: Timestamp(0, 0) }
+                }
+                .catch { error -> handleStreamError(error, OperationType.LIST, path, uid) }
+        )
+    }
+
+    fun observeAllAppInstalls(uid: String): Flow<List<AppInstall>> = flow {
+        val path = "appInstalls"
+        emitAll(
+            db.collection("appInstalls")
+                .snapshots()
+                .map { snapshot ->
+                    snapshot.toObjects(AppInstall::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
+                        .sortedByDescending { it.lastActiveAt ?: it.firstSeenAt ?: Timestamp(0, 0) }
                 }
                 .catch { error -> handleStreamError(error, OperationType.LIST, path, uid) }
         )
@@ -1327,6 +1341,52 @@ class FirebattleRepository(
             throw e
         } catch (e: Exception) {
             handleFirestoreError(e, OperationType.CREATE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun recordDeviceInstallHeartbeat(
+        installId: String,
+        deviceModel: String,
+        appVersion: String
+    ): Result<Unit> {
+        val cleanInstallId = installId.trim().filter { it.isLetterOrDigit() || it == '_' || it == '-' }.take(64)
+        val cleanModel = deviceModel.trim().ifBlank { "Android Device" }.take(80)
+        val cleanVersion = appVersion.trim().ifBlank { "1.0" }.take(30)
+        if (cleanInstallId.isEmpty()) {
+            return Result.failure(IllegalArgumentException("Install ID is invalid."))
+        }
+        val path = "appInstalls/$cleanInstallId"
+        return try {
+            val uid = requireUserId()
+            val docRef = db.collection("appInstalls").document(cleanInstallId)
+            val snap = docRef.get().await()
+            if (!snap.exists()) {
+                docRef.set(
+                    mapOf(
+                        "installId" to cleanInstallId,
+                        "userId" to uid,
+                        "deviceModel" to cleanModel,
+                        "appVersion" to cleanVersion,
+                        "firstSeenAt" to FieldValue.serverTimestamp(),
+                        "lastActiveAt" to FieldValue.serverTimestamp()
+                    )
+                ).await()
+            } else if (snap.getString("userId") == uid) {
+                docRef.update(
+                    mapOf(
+                        "userId" to uid,
+                        "deviceModel" to cleanModel,
+                        "appVersion" to cleanVersion,
+                        "lastActiveAt" to FieldValue.serverTimestamp()
+                    )
+                ).await()
+            }
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.WRITE, path)
             Result.failure(e)
         }
     }

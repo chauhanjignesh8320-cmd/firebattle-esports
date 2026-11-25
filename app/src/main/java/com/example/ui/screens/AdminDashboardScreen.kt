@@ -36,6 +36,8 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.AlertDialog
@@ -84,6 +86,7 @@ import androidx.compose.ui.unit.dp
 import android.widget.Toast
 import com.example.R
 import com.example.data.model.AdminTab
+import com.example.data.model.AppInstall
 import com.example.data.model.AppSettings
 import com.example.data.model.DepositRequest
 import com.example.data.model.MatchRegistration
@@ -122,9 +125,12 @@ fun AdminDashboardScreen(
     withdrawalsState: UiState<List<WithdrawalRequest>>,
     ownerPayoutsState: UiState<List<OwnerPayout>>,
     usersState: UiState<List<UserProfile>>,
+    appInstallsState: UiState<List<AppInstall>>,
+    apkDownloadsCount: Long?,
     settingsState: UiState<AppSettings>,
     isBusy: Boolean,
     onBackToPlayer: () -> Unit,
+    onRefreshApkDownloads: () -> Unit,
     onCreateMatch: (String, String, String, String, String, String, String, String, String, String, String, () -> Unit) -> Unit,
     onUpdateRoom: (matchId: String, roomId: String, roomPass: String) -> Unit,
     onToggleMatchStatus: (TournamentMatch) -> Unit,
@@ -216,8 +222,11 @@ fun AdminDashboardScreen(
                         ownerPayoutsState = ownerPayoutsState,
                         profitSummary = profitSummary,
                         usersState = usersState,
+                        appInstallsState = appInstallsState,
+                        apkDownloadsCount = apkDownloadsCount,
                         settingsState = settingsState,
                         isBusy = isBusy,
+                        onRefreshApkDownloads = onRefreshApkDownloads,
                         onCreateMatch = onCreateMatch,
                         onUpdateRoom = onUpdateRoom,
                         onToggleMatchStatus = onToggleMatchStatus,
@@ -279,8 +288,11 @@ fun AdminDashboardScreen(
                     ownerPayoutsState = ownerPayoutsState,
                     profitSummary = profitSummary,
                     usersState = usersState,
+                    appInstallsState = appInstallsState,
+                    apkDownloadsCount = apkDownloadsCount,
                     settingsState = settingsState,
                     isBusy = isBusy,
+                    onRefreshApkDownloads = onRefreshApkDownloads,
                     onCreateMatch = onCreateMatch,
                     onUpdateRoom = onUpdateRoom,
                     onToggleMatchStatus = onToggleMatchStatus,
@@ -466,8 +478,11 @@ private fun AdminTabBody(
     ownerPayoutsState: UiState<List<OwnerPayout>>,
     profitSummary: OwnerProfitSummary,
     usersState: UiState<List<UserProfile>>,
+    appInstallsState: UiState<List<AppInstall>>,
+    apkDownloadsCount: Long?,
     settingsState: UiState<AppSettings>,
     isBusy: Boolean,
+    onRefreshApkDownloads: () -> Unit,
     onCreateMatch: (String, String, String, String, String, String, String, String, String, String, String, () -> Unit) -> Unit,
     onUpdateRoom: (String, String, String) -> Unit,
     onToggleMatchStatus: (TournamentMatch) -> Unit,
@@ -679,6 +694,14 @@ private fun AdminTabBody(
             }
 
             AdminTab.PLAYERS -> {
+                item {
+                    AdminAppReachCard(
+                        usersState = usersState,
+                        appInstallsState = appInstallsState,
+                        apkDownloadsCount = apkDownloadsCount,
+                        onRefreshApkDownloads = onRefreshApkDownloads
+                    )
+                }
                 when (usersState) {
                     is UiState.Loading -> item { CircularProgressIndicator(color = BlazeOrange) }
                     is UiState.Error -> item { ErrorBannerCard(usersState.message) }
@@ -970,6 +993,141 @@ private fun AdminWithdrawalCard(
                             .heightIn(min = 48.dp)
                     ) {
                         Text("Reject & Refund", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AdminAppReachCard(
+    usersState: UiState<List<UserProfile>>,
+    appInstallsState: UiState<List<AppInstall>>,
+    apkDownloadsCount: Long?,
+    onRefreshApkDownloads: () -> Unit
+) {
+    val usersCount = (usersState as? UiState.Success)?.data?.size ?: 0
+    val installs = (appInstallsState as? UiState.Success)?.data.orEmpty()
+    val phonesCount = installs.size
+    val activeTodayCutoffMs = remember { System.currentTimeMillis() - 24L * 60L * 60L * 1000L }
+    val activeTodayCount = remember(installs, activeTodayCutoffMs) {
+        installs.count { item ->
+            val ts = (item.lastActiveAt ?: item.firstSeenAt)?.toDate()?.time ?: 0L
+            ts >= activeTodayCutoffMs
+        }
+    }
+
+    Surface(
+        color = ArenaSlateDark,
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(1.dp, EmeraldWin.copy(alpha = 0.4f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("admin_app_reach_card")
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.PhoneAndroid,
+                        contentDescription = null,
+                        tint = EmeraldWin,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Text(
+                        text = "App Installs & Active Players",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = EmeraldWin,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                androidx.compose.material3.IconButton(
+                    onClick = onRefreshApkDownloads,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Refresh,
+                        contentDescription = "Refresh APK downloads count",
+                        tint = BlazeOrange,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                StatTile(
+                    label = "APK Downloads",
+                    value = apkDownloadsCount?.toString() ?: "--",
+                    valueColor = CoinGold,
+                    modifier = Modifier.weight(1f)
+                )
+                StatTile(
+                    label = "Phones Tracked",
+                    value = "$phonesCount",
+                    valueColor = EmeraldWin,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                StatTile(
+                    label = "Registered",
+                    value = "$usersCount",
+                    valueColor = BlazeOrange,
+                    modifier = Modifier.weight(1f)
+                )
+                StatTile(
+                    label = "Active (24h)",
+                    value = "$activeTodayCount",
+                    valueColor = EmeraldWin,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            if (installs.isNotEmpty()) {
+                HorizontalDivider(color = ArenaSlateBorder)
+                Text(
+                    text = "Recent Phones (${installs.size} total)",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = TextSecondary,
+                    fontWeight = FontWeight.SemiBold
+                )
+                installs.take(5).forEach { device ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "${device.deviceModel} • v${device.appVersion}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = formatTimestampShort(device.lastActiveAt ?: device.firstSeenAt),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextMuted
+                        )
                     }
                 }
             }

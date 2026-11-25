@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.firebase.FirebattleRepository
+import com.example.data.model.AppInstall
 import com.example.data.model.AppSettings
 import com.example.data.model.DepositRequest
 import com.example.data.model.MatchRegistration
@@ -15,6 +16,7 @@ import com.example.data.model.UserProfile
 import com.example.data.model.WithdrawalRequest
 import com.google.firebase.firestore.FirebaseFirestoreException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +29,10 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
 
 data class AdminSettingsDraft(
     val upiId: String,
@@ -55,9 +61,44 @@ class AdminViewModel(
     private val _events = MutableSharedFlow<String>(extraBufferCapacity = 8)
     val events: SharedFlow<String> = _events.asSharedFlow()
 
+    private val _apkDownloadsCount = MutableStateFlow<Long?>(null)
+    val apkDownloadsCount: StateFlow<Long?> = _apkDownloadsCount.asStateFlow()
+
     init {
         viewModelScope.launch {
             repository.ensureDefaultSettingsIfMissing()
+        }
+        refreshApkDownloadCount()
+    }
+
+    fun refreshApkDownloadCount() {
+        viewModelScope.launch {
+            val count = withContext(Dispatchers.IO) {
+                runCatching {
+                    val conn = (URL(GITHUB_LATEST_RELEASE_API).openConnection() as HttpURLConnection).apply {
+                        requestMethod = "GET"
+                        connectTimeout = 5000
+                        readTimeout = 5000
+                        setRequestProperty("Accept", "application/vnd.github+json")
+                        setRequestProperty("User-Agent", "Firebattle-Android")
+                    }
+                    try {
+                        if (conn.responseCode != 200) return@runCatching null
+                        val body = conn.inputStream.bufferedReader().use { it.readText() }
+                        val assets = JSONObject(body).optJSONArray("assets") ?: return@runCatching 0L
+                        var total = 0L
+                        for (i in 0 until assets.length()) {
+                            total += assets.optJSONObject(i)?.optLong("download_count", 0L) ?: 0L
+                        }
+                        total
+                    } finally {
+                        conn.disconnect()
+                    }
+                }.getOrNull()
+            }
+            if (count != null) {
+                _apkDownloadsCount.value = count
+            }
         }
     }
 
@@ -81,6 +122,10 @@ class AdminViewModel(
 
     val allUsersState: StateFlow<UiState<List<UserProfile>>> = repository.observeAllUsers(currentUserId)
         .toUiState("players")
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), UiState.Loading)
+
+    val allAppInstallsState: StateFlow<UiState<List<AppInstall>>> = repository.observeAllAppInstalls(currentUserId)
+        .toUiState("app installs")
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), UiState.Loading)
 
     val settingsState: StateFlow<UiState<AppSettings>> = repository.observeAppSettings(currentUserId)
@@ -350,5 +395,7 @@ class AdminViewModel(
     private companion object {
         const val TAG = "AdminVM"
         const val STOP_TIMEOUT_MILLIS = 5000L
+        const val GITHUB_LATEST_RELEASE_API =
+            "https://api.github.com/repos/chauhanjignesh8320-cmd/firebattle-esports/releases/latest"
     }
 }

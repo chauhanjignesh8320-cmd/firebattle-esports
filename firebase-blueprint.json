@@ -480,6 +480,40 @@
         }
       },
       "required": ["adminUid", "amount", "upiId", "note", "createdAt"]
+    },
+    "AppInstall": {
+      "title": "AppInstall",
+      "description": "Per-device install and daily active heartbeat recorded when an authenticated user opens the app.",
+      "type": "object",
+      "properties": {
+        "installId": {
+          "type": "string",
+          "description": "Unique persistent installation identifier generated per phone."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Latest Firebase Auth UID signed in on this device."
+        },
+        "deviceModel": {
+          "type": "string",
+          "description": "Android manufacturer and model label."
+        },
+        "appVersion": {
+          "type": "string",
+          "description": "Installed Firebattle app version name."
+        },
+        "firstSeenAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when this device first opened the app."
+        },
+        "lastActiveAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when this device was last active."
+        }
+      },
+      "required": ["installId", "userId", "deviceModel", "appVersion", "firstSeenAt", "lastActiveAt"]
     }
   },
   "firestore": {
@@ -522,6 +556,10 @@
     "/ownerPayouts/{payoutId}": {
       "schema": { "$ref": "#/entities/OwnerPayout" },
       "description": "Admin-only organizer profit withdrawal ledger records."
+    },
+    "/appInstalls/{installId}": {
+      "schema": { "$ref": "#/entities/AppInstall" },
+      "description": "Per-device app install and daily active heartbeat records."
     }
   }
 }

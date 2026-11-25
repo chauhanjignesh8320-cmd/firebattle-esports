@@ -88,6 +88,18 @@ class PlayerViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), UiState.Loading)
 
     private var referralCodeEnsured = false
+    private var installHeartbeatRecorded = false
+
+    fun recordDeviceInstallHeartbeat(installId: String, deviceModel: String, appVersion: String) {
+        if (installHeartbeatRecorded) return
+        installHeartbeatRecorded = true
+        viewModelScope.launch {
+            val result = repository.recordDeviceInstallHeartbeat(installId, deviceModel, appVersion)
+            if (result.isFailure) {
+                installHeartbeatRecorded = false
+            }
+        }
+    }
 
     fun ensureReferralCodeIfMissing(profile: UserProfile) {
         if (profile.referralCode.isNotBlank() || referralCodeEnsured) return
