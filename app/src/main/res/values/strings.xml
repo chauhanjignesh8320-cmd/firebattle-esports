@@ -44,8 +44,8 @@
     <string name="refer_apply_button">Apply Referral Code</string>
     <string name="refer_friends_joined">Invited Friends</string>
     <string name="upi_qr_scan_title">Scan &amp; Pay via UPI QR</string>
-    <string name="upi_qr_scan_hint">Tap Pay via UPI App — request goes directly to Admin after payment (no UTR needed).</string>
-    <string name="open_upi_app">Pay via UPI App</string>
+    <string name="upi_qr_scan_hint">Tap above to pay via GPay, PhonePe or Paytm — once paid, your request goes directly to Admin.</string>
+    <string name="open_upi_app">Add Money via UPI App</string>
     <string name="admin_qr_preview_title">Your Live Payment QR Code</string>
     <string name="admin_revenue_title">Owner Earnings &amp; Cashflow</string>
     <string name="sponsor_badge">PARTNER PROMO</string>

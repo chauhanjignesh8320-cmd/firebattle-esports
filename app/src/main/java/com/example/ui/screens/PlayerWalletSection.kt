@@ -35,7 +35,6 @@ import androidx.compose.material.icons.filled.AddCircleOutline
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.CurrencyRupee
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.SportsEsports
@@ -66,10 +65,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -96,7 +93,6 @@ import com.example.ui.theme.BlazeOrange
 import com.example.ui.theme.CoinGold
 import com.example.ui.theme.ContestPurple
 import com.example.ui.theme.EmeraldWin
-import com.example.ui.theme.JetBrainsMonoFamily
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
 import com.example.ui.theme.WalletTeal
@@ -761,11 +757,7 @@ private fun AddMoneyRealUpiPanel(
     onSubmitDeposit: (String, String, () -> Unit) -> Unit,
     onCopyFeedback: (String) -> Unit
 ) {
-    val clipboard = LocalClipboardManager.current
     var depAmount by rememberSaveable { mutableStateOf("100") }
-    var depUtr by rememberSaveable { mutableStateOf("") }
-    var awaitingUpiConfirmAmount by rememberSaveable { mutableStateOf(0L) }
-    var awaitingUpiConfirmRef by rememberSaveable { mutableStateOf("") }
     var lastSubmittedSummary by rememberSaveable { mutableStateOf("") }
 
     val lightFieldColors = OutlinedTextFieldDefaults.colors(
@@ -846,54 +838,6 @@ private fun AddMoneyRealUpiPanel(
                             text = offerSub,
                             style = MaterialTheme.typography.bodySmall,
                             color = ArenaInkMuted
-                        )
-                    }
-                }
-            }
-
-            Surface(
-                color = ArenaWhiteCard,
-                shape = RoundedCornerShape(14.dp),
-                border = BorderStroke(1.dp, ArenaLightBorder),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Pay to Verified UPI ID",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = ArenaInkMuted
-                        )
-                        Text(
-                            text = settings.upiId,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontFamily = JetBrainsMonoFamily,
-                            color = BlazeOrange,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "Receiver: ${settings.upiName}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = ArenaInkDark
-                        )
-                    }
-                    IconButton(
-                        onClick = {
-                            clipboard.setText(AnnotatedString(settings.upiId))
-                            onCopyFeedback("Organizer UPI ID copied!")
-                        },
-                        modifier = Modifier.minimumInteractiveComponentSize()
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.ContentCopy,
-                            contentDescription = "Copy Admin UPI ID",
-                            tint = BlazeOrange
                         )
                     }
                 }
@@ -1006,123 +950,14 @@ private fun AddMoneyRealUpiPanel(
                 amount = depAmount.toLongOrNull(),
                 onFeedback = onCopyFeedback,
                 isLightSurface = true,
-                onUpiRefCaptured = { capturedRef ->
-                    depUtr = capturedRef
-                },
+                showQrSection = false,
+                isBusy = isBusy,
                 onAutoSubmitUpiDeposit = { paidAmount, capturedRef ->
-                    awaitingUpiConfirmAmount = 0L
-                    awaitingUpiConfirmRef = ""
                     onSubmitDeposit(paidAmount.toString(), capturedRef) {
-                        lastSubmittedSummary = "₹$paidAmount payment request sent directly to Admin (Ref: $capturedRef)."
-                        depUtr = ""
-                    }
-                },
-                onReturnedFromUpiApp = { paidAmount, capturedRef, explicitFailure ->
-                    if (!explicitFailure && paidAmount > 0L) {
-                        awaitingUpiConfirmAmount = paidAmount
-                        awaitingUpiConfirmRef = capturedRef
-                    } else {
-                        awaitingUpiConfirmAmount = 0L
-                        awaitingUpiConfirmRef = ""
+                        lastSubmittedSummary = "₹$paidAmount UPI payment sent directly to Admin (Ref: $capturedRef)."
                     }
                 }
             )
-
-            if (awaitingUpiConfirmAmount > 0L) {
-                Surface(
-                    color = EmeraldWin.copy(alpha = 0.14f),
-                    shape = RoundedCornerShape(14.dp),
-                    border = BorderStroke(1.5.dp, EmeraldWin),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("upi_return_confirm_card")
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = "Did ₹$awaitingUpiConfirmAmount get deducted in your UPI app?",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = ArenaInkDark,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "Tap below to send request directly to Admin — no UTR number needed.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = ArenaInkMuted
-                        )
-                        Button(
-                            onClick = {
-                                val amt = awaitingUpiConfirmAmount
-                                val ref = depUtr.trim().ifBlank { awaitingUpiConfirmRef }
-                                onSubmitDeposit(amt.toString(), ref) {
-                                    lastSubmittedSummary = "₹$amt request sent directly to Admin (Ref: $ref)."
-                                    awaitingUpiConfirmAmount = 0L
-                                    awaitingUpiConfirmRef = ""
-                                    depUtr = ""
-                                }
-                            },
-                            enabled = !isBusy,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = EmeraldWin,
-                                contentColor = Color.White
-                            ),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 48.dp)
-                                .testTag("confirm_upi_deducted_button")
-                        ) {
-                            Text(
-                                text = "Yes, ₹$awaitingUpiConfirmAmount Paid — Send to Admin",
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
-            }
-
-            Text(
-                text = "Paid by scanning QR or copying UPI ID? Tap below (no UTR required):",
-                style = MaterialTheme.typography.labelSmall,
-                color = ArenaInkMuted,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Button(
-                onClick = {
-                    val submittedAmount = depAmount.trim()
-                    val submittedUtr = depUtr.trim()
-                    onSubmitDeposit(submittedAmount, submittedUtr) {
-                        lastSubmittedSummary = "₹$submittedAmount deposit request sent directly to Admin."
-                        awaitingUpiConfirmAmount = 0L
-                        awaitingUpiConfirmRef = ""
-                        depAmount = ""
-                        depUtr = ""
-                    }
-                },
-                enabled = !isBusy,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = EmeraldWin,
-                    contentColor = Color.White
-                ),
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 50.dp)
-                    .testTag("submit_deposit_button")
-            ) {
-                Text(
-                    text = if (enteredDepAmount > 0L) {
-                        "I Have Paid ₹$enteredDepAmount — Notify Admin"
-                    } else {
-                        stringResource(R.string.submit_deposit)
-                    },
-                    fontWeight = FontWeight.Bold
-                )
-            }
         }
     }
 }

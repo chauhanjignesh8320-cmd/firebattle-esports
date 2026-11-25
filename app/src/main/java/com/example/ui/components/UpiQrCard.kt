@@ -2,6 +2,7 @@ package com.example.ui.components
 
 import android.app.Activity
 import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color as AndroidColor
@@ -31,6 +32,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -162,6 +164,12 @@ private fun generateQrImageBitmap(content: String, sizePx: Int = 384): ImageBitm
     }
 }
 
+private const val PREFS_NAME = "firebattle_prefs"
+private const val KEY_PENDING_UPI_AMOUNT = "pending_upi_amount"
+private const val KEY_PENDING_UPI_REF = "pending_upi_ref"
+private const val KEY_PENDING_UPI_TS = "pending_upi_ts"
+private const val MAX_PENDING_UPI_AGE_MS = 30L * 60L * 1000L
+
 @Composable
 fun UpiQrPaymentCard(
     upiId: String,
@@ -170,17 +178,23 @@ fun UpiQrPaymentCard(
     onFeedback: (String) -> Unit,
     modifier: Modifier = Modifier,
     isLightSurface: Boolean = false,
+    showQrSection: Boolean = true,
+    isBusy: Boolean = false,
     onUpiRefCaptured: (String) -> Unit = {},
     onAutoSubmitUpiDeposit: ((Long, String) -> Unit)? = null,
     onReturnedFromUpiApp: ((Long, String, Boolean) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val prefs = remember(context) {
+        context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    }
     val cleanUpi = upiId.trim()
     val hasValidUpi = cleanUpi.length >= 3 && cleanUpi.contains("@")
     val pendingRefState = rememberSaveable { mutableStateOf("") }
     val pendingAmountState = rememberSaveable { mutableLongStateOf(0L) }
     val pendingLaunchTimeMs = rememberSaveable { mutableLongStateOf(0L) }
+    val pendingLeftToUpiApp = rememberSaveable { mutableStateOf(false) }
     val pendingAutoSubmitted = rememberSaveable { mutableStateOf(false) }
 
     val latestOnUpiRefCaptured by rememberUpdatedState(onUpiRefCaptured)
@@ -188,36 +202,81 @@ fun UpiQrPaymentCard(
     val latestOnReturned by rememberUpdatedState(onReturnedFromUpiApp)
     val latestOnFeedback by rememberUpdatedState(onFeedback)
 
-    val upiUri = remember(cleanUpi, upiName, amount) {
-        if (hasValidUpi) buildUpiPaymentUri(cleanUpi, upiName, amount) else ""
+    val upiUri = remember(cleanUpi, upiName, amount, showQrSection) {
+        if (hasValidUpi && showQrSection) buildUpiPaymentUri(cleanUpi, upiName, amount) else ""
     }
-    val qrBitmap = remember(upiUri) {
-        if (upiUri.isNotBlank()) generateQrImageBitmap(upiUri) else null
+    val qrBitmap = remember(upiUri, showQrSection) {
+        if (showQrSection && upiUri.isNotBlank()) generateQrImageBitmap(upiUri) else null
+    }
+
+    fun clearPendingLaunch() {
+        pendingAmountState.longValue = 0L
+        pendingLaunchTimeMs.longValue = 0L
+        pendingLeftToUpiApp.value = false
+        prefs.edit()
+            .remove(KEY_PENDING_UPI_AMOUNT)
+            .remove(KEY_PENDING_UPI_REF)
+            .remove(KEY_PENDING_UPI_TS)
+            .apply()
+    }
+
+    fun savePendingLaunch(amt: Long, ref: String, nowMs: Long) {
+        pendingRefState.value = ref
+        pendingAmountState.longValue = amt
+        pendingLaunchTimeMs.longValue = nowMs
+        pendingLeftToUpiApp.value = false
+        pendingAutoSubmitted.value = false
+        prefs.edit()
+            .putLong(KEY_PENDING_UPI_AMOUNT, amt)
+            .putString(KEY_PENDING_UPI_REF, ref)
+            .putLong(KEY_PENDING_UPI_TS, nowMs)
+            .apply()
     }
 
     fun tryAutoSubmit(launchedAmount: Long, ref: String): Boolean {
         val submit = latestOnAutoSubmit ?: return false
         if (pendingAutoSubmitted.value || launchedAmount <= 0L) return false
         pendingAutoSubmitted.value = true
-        pendingAmountState.longValue = 0L
-        pendingLaunchTimeMs.longValue = 0L
+        clearPendingLaunch()
         latestOnUpiRefCaptured(ref)
         submit(launchedAmount, ref)
         return true
     }
 
+    LaunchedEffect(Unit) {
+        val savedAmount = prefs.getLong(KEY_PENDING_UPI_AMOUNT, 0L)
+        val savedTs = prefs.getLong(KEY_PENDING_UPI_TS, 0L)
+        val savedRef = prefs.getString(KEY_PENDING_UPI_REF, "").orEmpty()
+        if (savedAmount > 0L && savedTs > 0L) {
+            val ageMs = System.currentTimeMillis() - savedTs
+            if (ageMs in 2_000L..MAX_PENDING_UPI_AGE_MS && !pendingAutoSubmitted.value) {
+                tryAutoSubmit(savedAmount, savedRef.takeIf { it.length >= 6 } ?: generateUpiTxnRef())
+            } else if (ageMs > MAX_PENDING_UPI_AGE_MS) {
+                clearPendingLaunch()
+            }
+        }
+    }
+
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                val activeAmount = pendingAmountState.longValue
-                val launchedAt = pendingLaunchTimeMs.longValue
-                if (activeAmount > 0L && launchedAt > 0L && !pendingAutoSubmitted.value) {
-                    val elapsedMs = System.currentTimeMillis() - launchedAt
-                    if (elapsedMs >= 2_500L) {
-                        val resolvedRef = pendingRefState.value.takeIf { it.length >= 6 } ?: generateUpiTxnRef()
-                        tryAutoSubmit(activeAmount, resolvedRef)
+            when (event) {
+                Lifecycle.Event.ON_STOP -> {
+                    if (pendingAmountState.longValue > 0L && !pendingAutoSubmitted.value) {
+                        pendingLeftToUpiApp.value = true
                     }
                 }
+                Lifecycle.Event.ON_RESUME -> {
+                    val activeAmount = pendingAmountState.longValue
+                    val launchedAt = pendingLaunchTimeMs.longValue
+                    if (activeAmount > 0L && launchedAt > 0L && !pendingAutoSubmitted.value) {
+                        val elapsedMs = System.currentTimeMillis() - launchedAt
+                        if (pendingLeftToUpiApp.value && elapsedMs >= 2_000L) {
+                            val resolvedRef = pendingRefState.value.takeIf { it.length >= 6 } ?: generateUpiTxnRef()
+                            tryAutoSubmit(activeAmount, resolvedRef)
+                        }
+                    }
+                }
+                else -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -245,32 +304,27 @@ fun UpiQrPaymentCard(
 
         when {
             outcome.isExplicitFailure -> {
-                pendingAmountState.longValue = 0L
-                pendingLaunchTimeMs.longValue = 0L
                 pendingAutoSubmitted.value = true
+                clearPendingLaunch()
                 latestOnReturned?.invoke(launchedAmount, "", true)
                 latestOnFeedback("UPI payment ${outcome.statusLabel.lowercase()}. Request was not sent.")
             }
             (outcome.isSuccess ||
                 result.resultCode == Activity.RESULT_OK ||
-                (raw.isNullOrBlank() && elapsedMs >= 2_500L)) &&
+                (raw.isNullOrBlank() && pendingLeftToUpiApp.value && elapsedMs >= 2_000L)) &&
                 launchedAmount > 0L &&
                 latestOnAutoSubmit != null -> {
                 tryAutoSubmit(launchedAmount, resolvedRef)
             }
-            raw.isNullOrBlank() && elapsedMs < 2_500L && launchedAmount > 0L -> {
-                // Some UPI apps (e.g. PhonePe/Paytm singleTask) cancel the result callback immediately
-                // while still staying open for payment; keep pendingLaunchTimeMs armed for ON_RESUME,
-                // and show the 1-tap confirm fallback as backup.
+            raw.isNullOrBlank() && pendingLeftToUpiApp.value && launchedAmount > 0L -> {
+                // Keep armed for ON_RESUME if user is still completing payment in a singleTask UPI app.
                 latestOnUpiRefCaptured(resolvedRef)
                 latestOnReturned?.invoke(launchedAmount, resolvedRef, false)
             }
             else -> {
-                pendingAmountState.longValue = 0L
-                pendingLaunchTimeMs.longValue = 0L
-                latestOnUpiRefCaptured(resolvedRef)
-                latestOnReturned?.invoke(launchedAmount, resolvedRef, false)
-                latestOnFeedback("Tap 'Yes, Paid' below if ₹$launchedAmount was deducted!")
+                clearPendingLaunch()
+                latestOnReturned?.invoke(launchedAmount, "", true)
+                latestOnFeedback("UPI payment was cancelled.")
             }
         }
     }
@@ -293,76 +347,77 @@ fun UpiQrPaymentCard(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.QrCode2,
-                    contentDescription = null,
-                    tint = EmeraldWin,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = stringResource(R.string.upi_qr_scan_title),
-                    style = MaterialTheme.typography.titleSmall,
-                    color = titleColor,
-                    fontWeight = FontWeight.Bold
-                )
-            }
+            if (hasValidUpi) {
+                if (showQrSection && qrBitmap != null) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.QrCode2,
+                            contentDescription = null,
+                            tint = EmeraldWin,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = stringResource(R.string.upi_qr_scan_title),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = titleColor,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
 
-            if (amount != null && amount > 0L) {
-                Surface(
-                    color = if (isLightSurface) BlazeOrange.copy(alpha = 0.12f) else BlazeOrangeContainer,
-                    shape = RoundedCornerShape(8.dp)
-                ) {
+                    if (amount != null && amount > 0L) {
+                        Surface(
+                            color = if (isLightSurface) BlazeOrange.copy(alpha = 0.12f) else BlazeOrangeContainer,
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                text = "Amount Pre-filled: ₹$amount",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = BlazeOrange,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+
+                    Surface(
+                        color = Color.White,
+                        shape = RoundedCornerShape(16.dp),
+                        border = if (isLightSurface) BorderStroke(1.dp, ArenaLightBorder) else null,
+                        shadowElevation = 2.dp
+                    ) {
+                        Image(
+                            bitmap = qrBitmap,
+                            contentDescription = "UPI Payment QR Code for $cleanUpi",
+                            filterQuality = FilterQuality.None,
+                            modifier = Modifier
+                                .padding(12.dp)
+                                .size(176.dp)
+                                .testTag("upi_qr_code_image")
+                        )
+                    }
+                } else {
                     Text(
-                        text = "Amount Pre-filled: ₹$amount",
+                        text = "Verified Receiver: ${upiName.ifBlank { "Firebattle" }} ($cleanUpi)",
                         style = MaterialTheme.typography.labelMedium,
-                        color = BlazeOrange,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        fontFamily = JetBrainsMonoFamily,
+                        color = titleColor,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.Center
                     )
                 }
-            }
-
-            if (qrBitmap != null) {
-                Surface(
-                    color = Color.White,
-                    shape = RoundedCornerShape(16.dp),
-                    border = if (isLightSurface) BorderStroke(1.dp, ArenaLightBorder) else null,
-                    shadowElevation = 2.dp
-                ) {
-                    Image(
-                        bitmap = qrBitmap,
-                        contentDescription = "UPI Payment QR Code for $cleanUpi",
-                        filterQuality = FilterQuality.None,
-                        modifier = Modifier
-                            .padding(12.dp)
-                            .size(176.dp)
-                            .testTag("upi_qr_code_image")
-                    )
-                }
-
-                Text(
-                    text = stringResource(R.string.upi_qr_scan_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = hintTextColor,
-                    textAlign = TextAlign.Center
-                )
 
                 Button(
                     onClick = {
                         if (amount == null || amount <= 0L) {
-                            onFeedback("Select a quick pack or enter Amount (₹) first before opening UPI app.")
+                            onFeedback("Select a quick pack or enter Amount (₹) first before paying.")
                             return@Button
                         }
                         val txnRef = generateUpiTxnRef()
-                        pendingRefState.value = txnRef
-                        pendingAmountState.longValue = amount
-                        pendingLaunchTimeMs.longValue = System.currentTimeMillis()
-                        pendingAutoSubmitted.value = false
+                        savePendingLaunch(amount, txnRef, System.currentTimeMillis())
                         val payUri = buildUpiPaymentUri(
                             upiId = cleanUpi,
                             upiName = upiName,
@@ -373,19 +428,19 @@ fun UpiQrPaymentCard(
                         try {
                             upiLauncher.launch(payIntent)
                         } catch (_: ActivityNotFoundException) {
-                            pendingAmountState.longValue = 0L
-                            pendingLaunchTimeMs.longValue = 0L
-                            onFeedback("No UPI app found on this phone. Scan QR from another phone or copy UPI ID.")
+                            clearPendingLaunch()
+                            onFeedback("No UPI app installed on this phone (GPay, PhonePe, Paytm, or BHIM required).")
                         }
                     },
+                    enabled = !isBusy,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = BlazeOrange,
+                        containerColor = EmeraldWin,
                         contentColor = Color.White
                     ),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(14.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 48.dp)
+                        .heightIn(min = 52.dp)
                         .testTag("open_upi_app_button")
                 ) {
                     Icon(
@@ -396,13 +451,20 @@ fun UpiQrPaymentCard(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = if (amount != null && amount > 0L) {
-                            "Pay ₹$amount via UPI App"
+                            "Add ₹$amount via UPI App"
                         } else {
                             stringResource(R.string.open_upi_app)
                         },
                         fontWeight = FontWeight.Bold
                     )
                 }
+
+                Text(
+                    text = stringResource(R.string.upi_qr_scan_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = hintTextColor,
+                    textAlign = TextAlign.Center
+                )
             } else {
                 Text(
                     text = "Organizer UPI ID is not configured yet.",
