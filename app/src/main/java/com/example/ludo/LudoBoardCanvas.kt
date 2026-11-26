@@ -1,6 +1,8 @@
 package com.example.ludo
 
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
@@ -28,8 +30,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -79,6 +87,18 @@ private data class RenderedToken(
     val targetCol: Float,
     val isSelectable: Boolean
 )
+
+private class TokenVisualState(
+    initialProgress: Int,
+    initialRow: Float,
+    initialCol: Float
+) {
+    var lastProgress by mutableIntStateOf(initialProgress)
+    var currentRow by mutableFloatStateOf(initialRow)
+    var currentCol by mutableFloatStateOf(initialCol)
+    var hopLift by mutableFloatStateOf(0f)
+    var isHopping by mutableStateOf(false)
+}
 
 @Composable
 fun LudoBoardCanvas(
@@ -140,18 +160,114 @@ fun LudoBoardCanvas(
         label = "pulse_scale"
     )
 
-    val animatedCoords = renderedTokens.map { token ->
-        val animRow by animateFloatAsState(
-            targetValue = token.targetRow,
-            animationSpec = spring(dampingRatio = 0.72f, stiffness = 420f),
-            label = "row_${token.slot}_${token.index}"
-        )
-        val animCol by animateFloatAsState(
-            targetValue = token.targetCol,
-            animationSpec = spring(dampingRatio = 0.72f, stiffness = 420f),
-            label = "col_${token.slot}_${token.index}"
-        )
-        animRow to animCol
+    val allTokensZero = remember(hostTokens, guestTokens) {
+        hostTokens.all { it == 0 } && guestTokens.all { it == 0 }
+    }
+
+    val visualStates = renderedTokens.map { token ->
+        val state = remember(token.slot, token.index) {
+            TokenVisualState(
+                initialProgress = token.progress,
+                initialRow = token.targetRow,
+                initialCol = token.targetCol
+            )
+        }
+        val latestTargetRow by rememberUpdatedState(token.targetRow)
+        val latestTargetCol by rememberUpdatedState(token.targetCol)
+        val latestAllZero by rememberUpdatedState(allTokensZero)
+
+        LaunchedEffect(token.slot, token.index, token.progress) {
+            val prevProg = state.lastProgress
+            val newProg = token.progress
+            if (prevProg == newProg) {
+                state.currentRow = latestTargetRow
+                state.currentCol = latestTargetCol
+                state.hopLift = 0f
+                state.isHopping = false
+                return@LaunchedEffect
+            }
+
+            state.lastProgress = newProg
+            state.isHopping = true
+            try {
+                when {
+                    newProg > prevProg -> {
+                        val startStep = if (prevProg <= 0) 1 else prevProg + 1
+                        for (step in startStep..newProg) {
+                            val isFinalStep = (step == newProg)
+                            val (endR, endC) = if (isFinalStep) {
+                                latestTargetRow to latestTargetCol
+                            } else {
+                                LudoEngine.tokenBoardCenter(token.slot, token.index, step)
+                            }
+                            val startR = state.currentRow
+                            val startC = state.currentCol
+                            val stepDuration = if (prevProg <= 0 && step == 1 && isFinalStep) 190 else 115
+                            animate(
+                                initialValue = 0f,
+                                targetValue = 1f,
+                                animationSpec = tween(
+                                    durationMillis = stepDuration,
+                                    easing = FastOutSlowInEasing
+                                )
+                            ) { t, _ ->
+                                state.currentRow = startR + (endR - startR) * t
+                                state.currentCol = startC + (endC - startC) * t
+                                state.hopLift = sin(t * PI).toFloat()
+                            }
+                            state.hopLift = 0f
+                        }
+                    }
+
+                    newProg == 0 && !latestAllZero -> {
+                        // Captured opponent token returns smoothly to corner yard
+                        val startR = state.currentRow
+                        val startC = state.currentCol
+                        val endR = latestTargetRow
+                        val endC = latestTargetCol
+                        animate(
+                            initialValue = 0f,
+                            targetValue = 1f,
+                            animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing)
+                        ) { t, _ ->
+                            state.currentRow = startR + (endR - startR) * t
+                            state.currentCol = startC + (endC - startC) * t
+                            state.hopLift = (sin(t * PI) * 0.7f).toFloat()
+                        }
+                    }
+
+                    else -> {
+                        // Game reset or room reload: snap cleanly
+                        state.currentRow = latestTargetRow
+                        state.currentCol = latestTargetCol
+                    }
+                }
+            } finally {
+                state.hopLift = 0f
+                state.isHopping = false
+            }
+        }
+
+        // Smoothly adjust stack offset when co-located tokens share a cell
+        LaunchedEffect(token.slot, token.index, token.targetRow, token.targetCol) {
+            if (!state.isHopping && state.lastProgress == token.progress) {
+                val startR = state.currentRow
+                val startC = state.currentCol
+                val endR = token.targetRow
+                val endC = token.targetCol
+                if (kotlin.math.abs(startR - endR) > 0.005f || kotlin.math.abs(startC - endC) > 0.005f) {
+                    animate(
+                        initialValue = 0f,
+                        targetValue = 1f,
+                        animationSpec = tween(durationMillis = 130, easing = FastOutSlowInEasing)
+                    ) { t, _ ->
+                        state.currentRow = startR + (endR - startR) * t
+                        state.currentCol = startC + (endC - startC) * t
+                    }
+                }
+            }
+        }
+        state
     }
 
     Surface(
@@ -177,29 +293,37 @@ fun LudoBoardCanvas(
                 val cell = size.width / 15f
                 drawLudoBoardGrid(cell)
 
-                // Draw non-selectable tokens first, selectable tokens on top
-                val drawOrder = renderedTokens.indices.sortedBy { if (renderedTokens[it].isSelectable) 1 else 0 }
+                // Draw stationary tokens first, selectable and currently hopping tokens on top
+                val drawOrder = renderedTokens.indices.sortedBy {
+                    (if (renderedTokens[it].isSelectable) 1 else 0) +
+                        (if (visualStates[it].hopLift > 0.02f) 2 else 0)
+                }
                 drawOrder.forEach { idx ->
                     val token = renderedTokens[idx]
-                    val (rowF, colF) = animatedCoords[idx]
-                    val center = Offset(colF * cell, rowF * cell)
+                    val vs = visualStates[idx]
+                    val rowF = vs.currentRow
+                    val colF = vs.currentCol
+                    val lift = vs.hopLift
+                    val groundCenter = Offset(colF * cell, rowF * cell)
+                    val visualCenter = Offset(groundCenter.x, groundCenter.y - cell * 0.28f * lift)
                     val isStackShared = token.progress in 1 until LudoEngine.HOME_PROGRESS &&
                         renderedTokens.count {
                             it.progress in 1 until LudoEngine.HOME_PROGRESS &&
                                 LudoEngine.cellDistance(it.targetRow to it.targetCol, token.targetRow to token.targetCol) < 0.35f
                         } > 1
-                    val radius = if (isStackShared) cell * 0.29f else cell * 0.36f
+                    val baseRadius = if (isStackShared) cell * 0.29f else cell * 0.36f
+                    val radius = baseRadius * (1f + 0.16f * lift)
 
                     if (token.isSelectable) {
                         drawCircle(
                             color = CoinGold.copy(alpha = 0.42f),
                             radius = radius * 1.45f * pulseFraction,
-                            center = center
+                            center = visualCenter
                         )
                         drawCircle(
                             color = Color.White,
                             radius = radius * 1.24f,
-                            center = center,
+                            center = visualCenter,
                             style = Stroke(width = cell * 0.08f)
                         )
                     }
@@ -207,35 +331,35 @@ fun LudoBoardCanvas(
                     val fillColor = if (token.slot == 0) LudoRed else LudoYellow
                     val rimDark = if (token.slot == 0) LudoRedDark else LudoYellowDark
 
-                    // Drop shadow
+                    // Drop shadow stays on the board surface while token hops above it
                     drawCircle(
-                        color = Color.Black.copy(alpha = 0.25f),
-                        radius = radius,
-                        center = center + Offset(0f, cell * 0.05f)
+                        color = Color.Black.copy(alpha = (0.25f - 0.10f * lift).coerceAtLeast(0.10f)),
+                        radius = baseRadius,
+                        center = groundCenter + Offset(0f, cell * (0.05f + 0.06f * lift))
                     )
                     // Outer dark rim
                     drawCircle(
                         color = rimDark,
                         radius = radius,
-                        center = center
+                        center = visualCenter
                     )
                     // White collar
                     drawCircle(
                         color = Color.White,
                         radius = radius * 0.84f,
-                        center = center
+                        center = visualCenter
                     )
                     // Token body
                     drawCircle(
                         color = fillColor,
                         radius = radius * 0.68f,
-                        center = center
+                        center = visualCenter
                     )
                     // Specular highlight
                     drawCircle(
                         color = Color.White.copy(alpha = 0.45f),
                         radius = radius * 0.24f,
-                        center = center - Offset(radius * 0.22f, radius * 0.22f)
+                        center = visualCenter - Offset(radius * 0.22f, radius * 0.22f)
                     )
                 }
             }
@@ -243,9 +367,9 @@ fun LudoBoardCanvas(
             // Accessible interactive hitboxes for selectable tokens
             renderedTokens.forEachIndexed { idx, token ->
                 if (token.isSelectable) {
-                    val (rowF, colF) = animatedCoords[idx]
-                    val cx = colF * cellPx
-                    val cy = rowF * cellPx
+                    val vs = visualStates[idx]
+                    val cx = vs.currentCol * cellPx
+                    val cy = vs.currentRow * cellPx
                     val leftPx = (cx - hitSizePx / 2f).roundToInt()
                     val topPx = (cy - hitSizePx / 2f).roundToInt()
 

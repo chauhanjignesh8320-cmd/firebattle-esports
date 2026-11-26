@@ -274,19 +274,20 @@ class LudoViewModel(
         )
 
         if (state.mode == LudoPlayMode.VS_BOT && !outcome.didWin && outcome.nextTurnSlot == 1) {
-            scheduleBotTurn()
+            scheduleBotTurn(initialDelayMs = (state.diceValue * 120L + 360L))
         }
     }
 
-    private fun scheduleBotTurn() {
+    private fun scheduleBotTurn(initialDelayMs: Long = 650L) {
         botTurnJob?.cancel()
         botTurnJob = viewModelScope.launch {
+            var nextWaitMs = initialDelayMs
             while (true) {
                 val cur = _localState.value
                 if (cur.mode != LudoPlayMode.VS_BOT || cur.turnSlot != 1 || cur.winnerSlot != null) {
                     break
                 }
-                delay(650L)
+                delay(nextWaitMs)
                 val fresh = _localState.value
                 if (fresh.mode != LudoPlayMode.VS_BOT || fresh.turnSlot != 1 || fresh.winnerSlot != null) {
                     break
@@ -321,7 +322,7 @@ class LudoViewModel(
                     consecutiveSixes = nextSixes,
                     lastAction = "${fresh.guestName} rolled $dice..."
                 )
-                delay(650L)
+                delay(600L)
 
                 val preMove = _localState.value
                 if (preMove.mode != LudoPlayMode.VS_BOT || preMove.turnSlot != 1 || preMove.winnerSlot != null) {
@@ -348,6 +349,7 @@ class LudoViewModel(
                 if (outcome.didWin || outcome.nextTurnSlot != 1) {
                     break
                 }
+                nextWaitMs = (dice * 120L + 360L)
             }
         }
     }
