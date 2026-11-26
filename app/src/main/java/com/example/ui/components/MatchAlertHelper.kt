@@ -16,10 +16,10 @@ import androidx.core.content.ContextCompat
 import com.example.MainActivity
 import com.example.R
 import com.example.data.model.AppSettings
-import com.example.data.model.DEFAULT_APP_DOWNLOAD_URL
 import com.example.data.model.MatchMode
 import com.example.data.model.TeamFormat
 import com.example.data.model.TournamentMatch
+import com.example.data.model.buildReferralInviteLink
 
 private const val ROOM_ALERTS_CHANNEL_ID = "firebattle_room_alerts"
 
@@ -93,15 +93,15 @@ fun buildMatchShareText(
 ): String {
     val modeLabel = MatchMode.fromRaw(match.matchMode).label
     val formatLabel = TeamFormat.fromRaw(match.teamFormat).label
-    val downloadUrl = settings.appDownloadUrl.ifBlank { DEFAULT_APP_DOWNLOAD_URL }
+    val downloadUrl = buildReferralInviteLink(settings.appDownloadUrl, referralCode)
     val entryLabel = if (match.entry == 0L) "FREE (₹0)" else "₹${match.entry}"
     val refLine = if (referralCode.isNotBlank()) {
-        "\nUse my Referral Code: $referralCode"
+        "\nReferral Code: $referralCode"
     } else ""
     return "Join my Firebattle ${match.game} match!\n" +
         "${match.title} ($modeLabel • $formatLabel)\n" +
         "Time: ${match.matchTime} | Map: ${match.mapName}\n" +
         "Entry: $entryLabel | Prize Pool: ₹${match.prize} | Slots: ${match.joinedCount}/${match.slots}\n" +
-        "Download App: $downloadUrl" +
+        "Download / Open App: $downloadUrl" +
         refLine
 }

@@ -91,12 +91,20 @@ const val LEGACY_VERCEL_URL =
 const val DEFAULT_APP_DOWNLOAD_URL =
     "https://firebetal.com/"
 
+fun sanitizeReferralCode(raw: String): String =
+    raw.trim().uppercase().filter { it.isLetterOrDigit() }.take(16)
+
 fun buildReferralInviteLink(downloadUrl: String, referralCode: String): String {
-    val cleanUrl = downloadUrl.trim().ifBlank { DEFAULT_APP_DOWNLOAD_URL }
-    val cleanCode = referralCode.trim().uppercase()
-    if (cleanCode.isBlank()) return cleanUrl
-    val separator = if ('?' in cleanUrl) "&" else "?"
-    return "$cleanUrl${separator}ref=$cleanCode"
+    val trimmed = downloadUrl.trim().ifBlank { DEFAULT_APP_DOWNLOAD_URL }
+    val pathOnly = trimmed.substringBefore('?').substringBefore('#').lowercase()
+    val isDirectBinaryOrAlias = pathOnly.endsWith(".apk") ||
+        pathOnly.endsWith("/download") ||
+        pathOnly.endsWith("/apk")
+    val baseUrl = if (isDirectBinaryOrAlias) DEFAULT_APP_DOWNLOAD_URL else trimmed
+    val cleanCode = sanitizeReferralCode(referralCode)
+    if (cleanCode.isBlank()) return baseUrl
+    val separator = if ('?' in baseUrl) "&" else "?"
+    return "$baseUrl${separator}ref=$cleanCode"
 }
 
 @Keep

@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import java.util.UUID
@@ -49,6 +50,7 @@ import com.example.data.firebase.signOut
 import com.example.data.model.AppMode
 import com.example.data.model.PlayerTab
 import com.example.data.model.UiState
+import com.example.data.model.sanitizeReferralCode
 import com.example.notifications.AdminNotificationHelper
 import com.example.ui.components.ErrorBannerCard
 import com.example.ui.components.FirebattleTopBar
@@ -71,6 +73,7 @@ import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private var deepLinkReferralCode by mutableStateOf("")
+    private var referralDeepLinkTrigger by mutableIntStateOf(0)
     private var deepLinkPhonePeOrderId by mutableStateOf("")
     private var openAdminDepositsSignal by mutableIntStateOf(0)
 
@@ -78,7 +81,18 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         AdminNotificationHelper.ensureChannel(applicationContext)
-        deepLinkReferralCode = extractReferralCodeFromIntent(intent)
+        val prefs = getSharedPreferences("firebattle_prefs", Context.MODE_PRIVATE)
+        val extractedReferral = extractReferralCodeFromIntent(intent)
+        if (extractedReferral.isNotBlank()) {
+            prefs.edit().putString("pending_referral_code", extractedReferral).apply()
+            deepLinkReferralCode = extractedReferral
+            referralDeepLinkTrigger += 1
+        } else {
+            val savedPending = sanitizeReferralCode(prefs.getString("pending_referral_code", "") ?: "")
+            if (savedPending.length >= 6) {
+                deepLinkReferralCode = savedPending
+            }
+        }
         deepLinkPhonePeOrderId = extractPhonePeOrderIdFromIntent(intent)
         if (intent?.getBooleanExtra(AdminNotificationHelper.EXTRA_OPEN_ADMIN_DEPOSITS, false) == true) {
             openAdminDepositsSignal += 1
@@ -87,8 +101,13 @@ class MainActivity : ComponentActivity() {
             FirebattleTheme {
                 AppContent(
                     initialReferralCode = deepLinkReferralCode,
+                    referralDeepLinkTrigger = referralDeepLinkTrigger,
                     phonePeReturnOrderId = deepLinkPhonePeOrderId,
                     openAdminDepositsSignal = openAdminDepositsSignal,
+                    onConsumeReferralDeepLink = {
+                        prefs.edit().remove("pending_referral_code").apply()
+                        deepLinkReferralCode = ""
+                    },
                     onConsumePhonePeReturnOrder = { deepLinkPhonePeOrderId = "" },
                     onConsumeOpenAdminDeposits = { openAdminDepositsSignal = 0 }
                 )
@@ -101,7 +120,12 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         val extracted = extractReferralCodeFromIntent(intent)
         if (extracted.isNotBlank()) {
+            getSharedPreferences("firebattle_prefs", Context.MODE_PRIVATE)
+                .edit()
+                .putString("pending_referral_code", extracted)
+                .apply()
             deepLinkReferralCode = extracted
+            referralDeepLinkTrigger += 1
         }
         val orderId = extractPhonePeOrderIdFromIntent(intent)
         if (orderId.isNotBlank()) {
@@ -127,34 +151,50 @@ class MainActivity : ComponentActivity() {
 
     private fun extractReferralCodeFromIntent(intent: Intent?): String {
         val uri = intent?.data ?: return ""
-        val isCustomScheme = uri.scheme.equals("firebattle", ignoreCase = true) &&
-            uri.host.equals("refer", ignoreCase = true)
-        val isGitHubInviteLink = uri.scheme.equals("https", ignoreCase = true) &&
-            uri.host.equals("chauhanjignesh8320-cmd.github.io", ignoreCase = true) &&
-            (uri.path ?: "").startsWith("/firebattle-esports")
-        val isVercelOrCustomInviteLink = uri.scheme.equals("https", ignoreCase = true) &&
-            (uri.host.equals("firebattle-esports-k62s.vercel.app", ignoreCase = true) ||
-                uri.host.equals("firebetal.com", ignoreCase = true) ||
-                uri.host.equals("www.firebetal.com", ignoreCase = true))
-        if (!isCustomScheme && !isGitHubInviteLink && !isVercelOrCustomInviteLink) {
+        if (extractPhonePeOrderIdFromIntent(intent).isNotBlank()) return ""
+        val scheme = (uri.scheme ?: "").lowercase()
+        val isCustomScheme = scheme == "firebattle" && uri.host.equals("refer", ignoreCase = true)
+        val isWebScheme = scheme == "https" || scheme == "http"
+        if (!isCustomScheme && !isWebScheme) {
             return ""
         }
-        val queryCode = uri.getQueryParameter("code") ?: uri.getQueryParameter("ref")
-        val pathCode = (uri.path ?: "")
-            .trim('/')
-            .split('/')
-            .takeIf { it.size >= 2 && it[0].equals("refer", ignoreCase = true) }
-            ?.getOrNull(1)
-        val raw = queryCode ?: pathCode ?: ""
-        return raw.trim().uppercase().filter { it.isLetterOrDigit() }.take(16)
+
+        val queryCode = uri.getQueryParameter("code")
+            ?: uri.getQueryParameter("ref")
+            ?: uri.getQueryParameter("referral")
+            ?: uri.getQueryParameter("referralCode")
+
+        val fragmentCode = uri.encodedFragment
+            ?.takeIf { it.isNotBlank() }
+            ?.split('&')
+            ?.firstNotNullOfOrNull { part ->
+                val kv = part.split('=', limit = 2)
+                if (kv.size == 2 && kv[0].lowercase() in setOf("ref", "code", "referral", "referralcode")) {
+                    Uri.decode(kv[1])
+                } else null
+            }
+
+        val segments = (uri.path ?: "").trim('/').split('/').filter { it.isNotBlank() }
+        val pathCode = when {
+            isCustomScheme -> segments.firstOrNull()
+            else -> {
+                val idx = segments.indexOfFirst { it.equals("refer", ignoreCase = true) }
+                if (idx >= 0 && idx + 1 < segments.size) segments[idx + 1] else null
+            }
+        }
+
+        val cleaned = sanitizeReferralCode(queryCode ?: fragmentCode ?: pathCode ?: "")
+        return if (cleaned.length >= 6) cleaned else ""
     }
 }
 
 @Composable
 fun AppContent(
     initialReferralCode: String = "",
+    referralDeepLinkTrigger: Int = 0,
     phonePeReturnOrderId: String = "",
     openAdminDepositsSignal: Int = 0,
+    onConsumeReferralDeepLink: () -> Unit = {},
     onConsumePhonePeReturnOrder: () -> Unit = {},
     onConsumeOpenAdminDeposits: () -> Unit = {}
 ) {
@@ -180,8 +220,10 @@ fun AppContent(
                 userDisplayName = user.displayName ?: "",
                 userEmail = user.email ?: "",
                 initialReferralCode = initialReferralCode,
+                referralDeepLinkTrigger = referralDeepLinkTrigger,
                 phonePeReturnOrderId = phonePeReturnOrderId,
                 openAdminDepositsSignal = openAdminDepositsSignal,
+                onConsumeReferralDeepLink = onConsumeReferralDeepLink,
                 onConsumePhonePeReturnOrder = onConsumePhonePeReturnOrder,
                 onConsumeOpenAdminDeposits = onConsumeOpenAdminDeposits
             )
@@ -195,8 +237,10 @@ private fun AuthenticatedArenaShell(
     userDisplayName: String,
     userEmail: String,
     initialReferralCode: String = "",
+    referralDeepLinkTrigger: Int = 0,
     phonePeReturnOrderId: String = "",
     openAdminDepositsSignal: Int = 0,
+    onConsumeReferralDeepLink: () -> Unit = {},
     onConsumePhonePeReturnOrder: () -> Unit = {},
     onConsumeOpenAdminDeposits: () -> Unit = {}
 ) {
@@ -344,6 +388,36 @@ private fun AuthenticatedArenaShell(
         }
     }
 
+    val loadedProfile = (profileState as? UiState.Success)?.data
+    LaunchedEffect(loadedProfile?.referredByCode) {
+        if (loadedProfile != null && loadedProfile.referredByCode.isNotBlank() && initialReferralCode.isNotBlank()) {
+            onConsumeReferralDeepLink()
+        }
+    }
+
+    LaunchedEffect(referralDeepLinkTrigger, initialReferralCode, loadedProfile?.userId) {
+        if (initialReferralCode.isBlank()) return@LaunchedEffect
+        val prof = loadedProfile ?: return@LaunchedEffect
+        if (referralDeepLinkTrigger > 0 || prof.referredByCode.isBlank()) {
+            currentMode = AppMode.PLAYER
+            showLudoArena = false
+            selectedPlayerTab = PlayerTab.REFER
+            when {
+                prof.referralCode.equals(initialReferralCode, ignoreCase = true) -> {
+                    snackbarHostState.showSnackbar("This is your own referral link (${prof.referralCode}). Share it with friends!")
+                    onConsumeReferralDeepLink()
+                }
+                prof.referredByCode.isNotBlank() -> {
+                    snackbarHostState.showSnackbar("Referral already claimed (${prof.referredByCode}).")
+                    onConsumeReferralDeepLink()
+                }
+                referralDeepLinkTrigger > 0 -> {
+                    snackbarHostState.showSnackbar("Referral code $initialReferralCode loaded! Tap Apply Referral Code.")
+                }
+            }
+        }
+    }
+
     LaunchedEffect(currentUserId) {
         val prefs = context.getSharedPreferences("firebattle_prefs", Context.MODE_PRIVATE)
         val installId = prefs.getString("install_id", null)?.takeIf { it.isNotBlank() } ?: run {
@@ -427,7 +501,12 @@ private fun AuthenticatedArenaShell(
                                 gameUid = gameUid,
                                 phone = phone,
                                 isExisting = false,
-                                optionalFriendReferralCode = referralCode
+                                optionalFriendReferralCode = referralCode,
+                                onSuccess = {
+                                    if (referralCode.isNotBlank()) {
+                                        onConsumeReferralDeepLink()
+                                    }
+                                }
                             )
                         },
                         onLogout = handleLogout,
@@ -600,6 +679,7 @@ private fun AuthenticatedArenaShell(
                                 onSelectTab = { selectedPlayerTab = it },
                                 alertsDialogTrigger = alertsDialogTrigger,
                                 initialReferralCode = initialReferralCode,
+                                referralDeepLinkTrigger = referralDeepLinkTrigger,
                                 isBusy = playerBusy,
                                 onJoinMatch = { match, slotNumber, customIgn ->
                                     playerViewModel.joinMatch(match, profile, slotNumber, customIgn)
@@ -613,7 +693,10 @@ private fun AuthenticatedArenaShell(
                                     playerViewModel.submitWithdrawal(profile, amt, upiId, onSuccess)
                                 },
                                 onApplyReferralCode = { code, onSuccess ->
-                                    playerViewModel.applyReferralCode(profile, code, onSuccess)
+                                    playerViewModel.applyReferralCode(profile, code) {
+                                        onConsumeReferralDeepLink()
+                                        onSuccess()
+                                    }
                                 },
                                 onUpdateProfile = { ign, gameUid, phone, onSuccess ->
                                     playerViewModel.saveProfile(ign, gameUid, phone, isExisting = true, onSuccess = onSuccess)

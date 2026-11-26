@@ -37,6 +37,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -77,6 +78,12 @@ fun ProfileSetupScreen(
     var phone by rememberSaveable { mutableStateOf(existingProfile?.phone ?: "") }
     var friendCode by rememberSaveable(initialReferralCode) {
         mutableStateOf(initialReferralCode.uppercase().filter { it.isLetterOrDigit() }.take(16))
+    }
+    LaunchedEffect(initialReferralCode) {
+        val clean = initialReferralCode.uppercase().filter { it.isLetterOrDigit() }.take(16)
+        if (clean.length >= 6) {
+            friendCode = clean
+        }
     }
     var localError by rememberSaveable { mutableStateOf<String?>(null) }
 
@@ -194,6 +201,13 @@ fun ProfileSetupScreen(
                             .fillMaxWidth()
                             .testTag("profile_referral_input")
                     )
+                    if (initialReferralCode.isNotBlank() && friendCode == initialReferralCode.uppercase().filter { it.isLetterOrDigit() }.take(16)) {
+                        Text(
+                            text = "Referral code loaded from your invite link — bonus unlocks when you save!",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = EmeraldWin
+                        )
+                    }
 
                     if (localError != null) {
                         ErrorBannerCard(message = localError!!)

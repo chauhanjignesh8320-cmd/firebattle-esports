@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.aistudio.firebattle.kxmzqr",
+      "sha256_cert_fingerprints": [
+        "B3:AB:77:DE:1D:FA:A6:0F:29:A9:DD:EC:74:43:B2:2F:24:A5:41:F2:CD:7C:74:C2:DE:C3:19:7C:3E:3A:E0:CE"
+      ]
+    }
+  }
+]

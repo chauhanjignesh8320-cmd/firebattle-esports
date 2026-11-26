@@ -472,7 +472,8 @@ class FirebattleRepository(
             require(REFERRAL_CODE_REGEX.matches(cleanCode)) {
                 "Enter a valid 6 to 16 character alphanumeric referral code."
             }
-            val cleanIgn = profile.ign.trim().ifBlank { "Player" }.take(30)
+            val trimmedIgn = profile.ign.trim().take(30)
+            val cleanIgn = if (trimmedIgn.length < 2) "Player" else trimmedIgn
             val bonus = applyReferralCodeInternal(uid, cleanIgn, cleanCode)
             Result.success(bonus)
         } catch (e: CancellationException) {

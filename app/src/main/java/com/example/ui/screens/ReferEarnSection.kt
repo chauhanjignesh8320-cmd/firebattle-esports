@@ -38,6 +38,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -83,6 +84,7 @@ fun ReferEarnSection(
     settingsState: UiState<AppSettings>,
     referralsState: UiState<List<ReferralRecord>>,
     initialReferralCode: String = "",
+    referralDeepLinkTrigger: Int = 0,
     isBusy: Boolean,
     onApplyReferralCode: (code: String, onSuccess: () -> Unit) -> Unit,
     onCopyFeedback: (String) -> Unit,
@@ -96,7 +98,17 @@ fun ReferEarnSection(
         buildReferralInviteLink(settings.appDownloadUrl, profile.referralCode)
     }
     var friendCodeInput by rememberSaveable(initialReferralCode) {
-        mutableStateOf(initialReferralCode.uppercase().filter { it.isLetterOrDigit() }.take(16))
+        mutableStateOf(
+            initialReferralCode.uppercase().filter { it.isLetterOrDigit() }.take(16)
+                .takeIf { !it.equals(profile.referralCode, ignoreCase = true) }
+                ?: ""
+        )
+    }
+    LaunchedEffect(initialReferralCode, referralDeepLinkTrigger, profile.referralCode) {
+        val clean = initialReferralCode.uppercase().filter { it.isLetterOrDigit() }.take(16)
+        if (clean.length >= 6 && !clean.equals(profile.referralCode, ignoreCase = true)) {
+            friendCodeInput = clean
+        }
     }
 
     val fieldColors = OutlinedTextFieldDefaults.colors(
@@ -344,14 +356,13 @@ fun ReferEarnSection(
                                 if (code.isNotBlank()) {
                                     val inviteText = buildString {
                                         append("🔥 Join me on Firebattle Esports!\n")
-                                        append("Play Free Fire MAX & BGMI tournaments and win daily cash prizes.\n\n")
-                                        append("📲 Download App:\n")
+                                        append("Play Free Fire MAX, BGMI & Ludo tournaments and win daily cash prizes.\n\n")
+                                        append("📲 Tap Referral Link (Download / Open App):\n")
                                         append(inviteLink)
                                         append("\n\n🎁 Referral Code: $code\n")
                                         if (bonus > 0L) {
-                                            append("Apply this code to get ₹$bonus instant wallet bonus!\n")
+                                            append("Apply this code to get ₹$bonus instant wallet bonus!")
                                         }
-                                        append("Already installed? Tap: firebattle://refer?code=$code")
                                     }
                                     val sendIntent = Intent(Intent.ACTION_SEND).apply {
                                         type = "text/plain"

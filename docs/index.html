@@ -468,7 +468,7 @@
         <img src="favicon.svg" alt="Firebattle Logo" />
         <span>FIREBATTLE ESPORTS</span>
       </a>
-      <a class="nav-btn" href="https://github.com/chauhanjignesh8320-cmd/firebattle-esports/releases/latest/download/Firebattle.apk">
+      <a class="nav-btn js-apk-download" href="https://github.com/chauhanjignesh8320-cmd/firebattle-esports/releases/latest/download/Firebattle.apk">
         Download APK
       </a>
     </div>
@@ -498,7 +498,7 @@
         </p>
 
         <div class="cta-group">
-          <a class="btn-primary" href="https://github.com/chauhanjignesh8320-cmd/firebattle-esports/releases/latest/download/Firebattle.apk">
+          <a class="btn-primary js-apk-download" href="https://github.com/chauhanjignesh8320-cmd/firebattle-esports/releases/latest/download/Firebattle.apk">
             ⬇ Download Firebattle APK (Android)
           </a>
           <button type="button" class="btn-secondary" onclick="shareSite()">Share Download Link</button>
@@ -618,7 +618,7 @@
     <div class="container">
       <p>© 2026 Firebattle Esports. Built for Free Fire MAX &amp; BGMI Community Tournaments.</p>
       <p style="margin-top:6px;">
-        <a href="https://github.com/chauhanjignesh8320-cmd/firebattle-esports/releases/latest/download/Firebattle.apk" style="color:var(--emerald); font-weight:700;">
+        <a class="js-apk-download" href="https://github.com/chauhanjignesh8320-cmd/firebattle-esports/releases/latest/download/Firebattle.apk" style="color:var(--emerald); font-weight:700;">
           Direct APK Download
         </a>
         &nbsp;•&nbsp;
@@ -631,11 +631,57 @@
 
   <script>
     (function () {
+      function cleanCode(val) {
+        return (val || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16);
+      }
+
       var params = new URLSearchParams(window.location.search);
-      var raw = (params.get("ref") || params.get("code") || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16);
+      var hashStr = (window.location.hash || "").replace(/^#/, "");
+      var hashParams = new URLSearchParams(hashStr.indexOf("=") >= 0 ? hashStr : "");
+      var pathParts = (window.location.pathname || "").split("/").filter(Boolean);
+      var referIdx = pathParts.findIndex(function (p) { return p.toLowerCase() === "refer"; });
+      var pathCode = (referIdx >= 0 && pathParts.length > referIdx + 1) ? pathParts[referIdx + 1] : "";
+
+      var raw = cleanCode(
+        params.get("ref") ||
+        params.get("code") ||
+        params.get("referral") ||
+        params.get("referralCode") ||
+        hashParams.get("ref") ||
+        hashParams.get("code") ||
+        pathCode
+      );
+
       if (raw.length >= 6) {
+        var apkUrl = "https://github.com/chauhanjignesh8320-cmd/firebattle-esports/releases/latest/download/Firebattle.apk";
+        var isAndroid = /Android/i.test(navigator.userAgent || "");
+        var customSchemeUrl = "firebattle://refer?code=" + encodeURIComponent(raw);
+        var intentUrl =
+          "intent://refer?code=" + encodeURIComponent(raw) +
+          "#Intent;scheme=firebattle;package=com.aistudio.firebattle.kxmzqr;" +
+          "S.browser_fallback_url=" + encodeURIComponent(apkUrl) + ";end";
+
         document.getElementById("refCodeText").textContent = raw;
-        document.getElementById("openAppRefLink").href = "firebattle://refer?code=" + encodeURIComponent(raw);
+        var openLink = document.getElementById("openAppRefLink");
+        openLink.href = isAndroid ? intentUrl : customSchemeUrl;
+        openLink.addEventListener("click", function () {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(raw).catch(function () {});
+          }
+          if (!isAndroid) {
+            showToast("Open this link on Android with Firebattle installed.");
+          }
+        });
+
+        document.querySelectorAll(".js-apk-download").forEach(function (el) {
+          el.addEventListener("click", function () {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(raw).catch(function () {});
+            }
+            showToast("Code " + raw + " copied! Paste in app after install.");
+          });
+        });
+
         document.getElementById("referralBanner").classList.add("active");
         window.__fbRefCode = raw;
       }
@@ -645,16 +691,16 @@
       var toast = document.getElementById("toast");
       toast.textContent = msg;
       toast.style.display = "block";
-      setTimeout(function () { toast.style.display = "none"; }, 2200);
+      setTimeout(function () { toast.style.display = "none"; }, 2600);
     }
 
     function copyRefCode() {
       var code = window.__fbRefCode || "";
       if (!code) return;
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(code);
+        navigator.clipboard.writeText(code).catch(function () {});
       }
-      showToast("Referral code copied!");
+      showToast("Referral code " + code + " copied!");
     }
 
     function shareSite() {

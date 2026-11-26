@@ -159,6 +159,7 @@ fun PlayerDashboardScreen(
     onSelectTab: (PlayerTab) -> Unit = {},
     alertsDialogTrigger: Int = 0,
     initialReferralCode: String = "",
+    referralDeepLinkTrigger: Int = 0,
     isBusy: Boolean,
     onJoinMatch: (TournamentMatch, Long, String) -> Unit,
     onSubmitDeposit: (amountText: String, utr: String, onSuccess: () -> Unit) -> Unit,
@@ -207,8 +208,9 @@ fun PlayerDashboardScreen(
         }
     }
 
-    LaunchedEffect(initialReferralCode) {
+    LaunchedEffect(initialReferralCode, referralDeepLinkTrigger) {
         if (initialReferralCode.isNotBlank() && profile.referredByCode.isBlank()) {
+            onSetShowLudoArena(false)
             onSelectTab(PlayerTab.REFER)
         }
     }
@@ -293,6 +295,7 @@ fun PlayerDashboardScreen(
                         withdrawalsState = withdrawalsState,
                         referralsState = referralsState,
                         initialReferralCode = initialReferralCode,
+                        referralDeepLinkTrigger = referralDeepLinkTrigger,
                         isBusy = isBusy,
                         onSelectTab = onSelectTab,
                         onOpenLudo = { fmt ->
@@ -363,6 +366,7 @@ fun PlayerDashboardScreen(
                     withdrawalsState = withdrawalsState,
                     referralsState = referralsState,
                     initialReferralCode = initialReferralCode,
+                    referralDeepLinkTrigger = referralDeepLinkTrigger,
                     isBusy = isBusy,
                     onSelectTab = onSelectTab,
                     onOpenLudo = { fmt ->
@@ -543,6 +547,7 @@ private fun PlayerTabContent(
     withdrawalsState: UiState<List<WithdrawalRequest>>,
     referralsState: UiState<List<ReferralRecord>>,
     initialReferralCode: String = "",
+    referralDeepLinkTrigger: Int = 0,
     isBusy: Boolean,
     onSelectTab: (PlayerTab) -> Unit,
     onOpenLudo: (String) -> Unit,
@@ -601,6 +606,7 @@ private fun PlayerTabContent(
             settingsState = settingsState,
             referralsState = referralsState,
             initialReferralCode = initialReferralCode,
+            referralDeepLinkTrigger = referralDeepLinkTrigger,
             isBusy = isBusy,
             onApplyReferralCode = onApplyReferralCode,
             onCopyFeedback = onCopyFeedback,
