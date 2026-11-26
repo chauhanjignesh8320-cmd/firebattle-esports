@@ -95,7 +95,10 @@ import com.example.R
 import com.example.data.model.AdminTab
 import com.example.data.model.AppInstall
 import com.example.data.model.AppSettings
+import com.example.data.model.DEFAULT_APP_DOWNLOAD_URL
 import com.example.data.model.DepositRequest
+import com.example.data.model.LEGACY_GITHUB_PAGES_URL
+import com.example.data.model.LEGACY_VERCEL_URL
 import com.example.data.model.LudoRoom
 import com.example.data.model.MatchRegistration
 import com.example.data.model.OwnerPayout
@@ -1726,6 +1729,38 @@ private fun AdminSettingsCard(
                     .fillMaxWidth()
                     .testTag("settings_app_download_url_input")
             )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(
+                    "firebetal.com" to DEFAULT_APP_DOWNLOAD_URL,
+                    "Vercel" to LEGACY_VERCEL_URL,
+                    "GitHub Pages" to LEGACY_GITHUB_PAGES_URL
+                ).forEach { (label, presetUrl) ->
+                    OutlinedButton(
+                        onClick = { appDownloadUrl = presetUrl },
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(
+                            1.dp,
+                            if (appDownloadUrl.trim().trimEnd('/').equals(presetUrl.trimEnd('/'), ignoreCase = true)) {
+                                EmeraldWin
+                            } else {
+                                ArenaSlateBorder
+                            }
+                        ),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextPrimary,
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
 
             Text(
                 text = "Partner / Sponsor Banner (Monetize Ad Slot)",

@@ -61,6 +61,7 @@ import com.example.data.model.ReferralRecord
 import com.example.data.model.UiState
 import com.example.data.model.UserProfile
 import com.example.data.model.buildReferralInviteLink
+import com.example.data.model.extractReferralCodeFromInput
 import com.example.ui.components.EmptyArenaState
 import com.example.ui.components.ErrorBannerCard
 import com.example.ui.components.StatTile
@@ -470,7 +471,7 @@ fun ReferEarnSection(
                         OutlinedTextField(
                             value = friendCodeInput,
                             onValueChange = { raw ->
-                                friendCodeInput = raw.uppercase().filter { it.isLetterOrDigit() }.take(16)
+                                friendCodeInput = extractReferralCodeFromInput(raw)
                             },
                             label = { Text("Enter Referral Code (e.g. FB8X2K9P)") },
                             singleLine = true,

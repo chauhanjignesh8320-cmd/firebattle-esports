@@ -94,6 +94,21 @@ const val DEFAULT_APP_DOWNLOAD_URL =
 fun sanitizeReferralCode(raw: String): String =
     raw.trim().uppercase().filter { it.isLetterOrDigit() }.take(16)
 
+fun extractReferralCodeFromInput(raw: String): String {
+    val trimmed = raw.trim()
+    val paramMatch = Regex("""(?:[?&#]|^)(?:ref|code|referral|referralCode)=([A-Za-z0-9]{4,16})""", RegexOption.IGNORE_CASE)
+        .find(trimmed)
+    if (paramMatch != null) {
+        return sanitizeReferralCode(paramMatch.groupValues[1])
+    }
+    val pathMatch = Regex("""/refer/([A-Za-z0-9]{4,16})""", RegexOption.IGNORE_CASE)
+        .find(trimmed)
+    if (pathMatch != null) {
+        return sanitizeReferralCode(pathMatch.groupValues[1])
+    }
+    return sanitizeReferralCode(trimmed)
+}
+
 fun buildReferralInviteLink(downloadUrl: String, referralCode: String): String {
     val trimmed = downloadUrl.trim().ifBlank { DEFAULT_APP_DOWNLOAD_URL }
     val pathOnly = trimmed.substringBefore('?').substringBefore('#').lowercase()

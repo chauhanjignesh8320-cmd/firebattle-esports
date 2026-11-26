@@ -50,6 +50,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.data.model.UserProfile
+import com.example.data.model.extractReferralCodeFromInput
 import com.example.ui.components.ErrorBannerCard
 import com.example.ui.theme.ArenaObsidian
 import com.example.ui.theme.ArenaSlateBorder
@@ -188,7 +189,7 @@ fun ProfileSetupScreen(
                     OutlinedTextField(
                         value = friendCode,
                         onValueChange = { input ->
-                            friendCode = input.uppercase().filter { it.isLetterOrDigit() }.take(16)
+                            friendCode = extractReferralCodeFromInput(input)
                             localError = null
                         },
                         label = { Text("Referral Code (Optional)") },

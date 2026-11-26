@@ -111,11 +111,7 @@ class FirebattleRepository(
                     val parsed = snapshot.toObject(AppSettings::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
                         ?: AppSettings()
                     val trimmedUrl = parsed.appDownloadUrl.trim()
-                    val isLegacyUrl = trimmedUrl.isBlank() ||
-                        trimmedUrl.equals(LEGACY_APK_DOWNLOAD_URL, ignoreCase = true) ||
-                        trimmedUrl.trimEnd('/').equals(LEGACY_GITHUB_PAGES_URL.trimEnd('/'), ignoreCase = true) ||
-                        trimmedUrl.trimEnd('/').equals(LEGACY_VERCEL_URL.trimEnd('/'), ignoreCase = true)
-                    val resolvedUrl = if (isLegacyUrl) DEFAULT_APP_DOWNLOAD_URL else trimmedUrl
+                    val resolvedUrl = trimmedUrl.ifBlank { DEFAULT_APP_DOWNLOAD_URL }
                     val resolvedFee = if (snapshot.exists() && !snapshot.contains("withdrawalFeePercent")) {
                         0L
                     } else {

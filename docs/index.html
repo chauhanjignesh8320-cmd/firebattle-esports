@@ -653,25 +653,35 @@
       );
 
       if (raw.length >= 6) {
-        var apkUrl = "https://github.com/chauhanjignesh8320-cmd/firebattle-esports/releases/latest/download/Firebattle.apk";
-        var isAndroid = /Android/i.test(navigator.userAgent || "");
+        var currentPageFallback = window.location.origin + window.location.pathname + "?ref=" + encodeURIComponent(raw) + "&openFailed=1";
+        var ua = navigator.userAgent || "";
+        var isAndroid = /Android/i.test(ua);
+        var isInAppWebView = /FBAN|FBAV|Instagram|WhatsApp|Snapchat|Line|MicroMessenger|; wv\)/i.test(ua);
         var customSchemeUrl = "firebattle://refer?code=" + encodeURIComponent(raw);
         var intentUrl =
           "intent://refer?code=" + encodeURIComponent(raw) +
           "#Intent;scheme=firebattle;package=com.aistudio.firebattle.kxmzqr;" +
-          "S.browser_fallback_url=" + encodeURIComponent(apkUrl) + ";end";
+          "S.browser_fallback_url=" + encodeURIComponent(currentPageFallback) + ";end";
 
         document.getElementById("refCodeText").textContent = raw;
         var openLink = document.getElementById("openAppRefLink");
         openLink.href = isAndroid ? intentUrl : customSchemeUrl;
-        openLink.addEventListener("click", function () {
+        openLink.addEventListener("click", function (e) {
           if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(raw).catch(function () {});
           }
           if (!isAndroid) {
-            showToast("Open this link on Android with Firebattle installed.");
+            e.preventDefault();
+            showToast("Open this link on an Android phone with Firebattle installed.");
+          } else if (isInAppWebView) {
+            e.preventDefault();
+            showToast("Code " + raw + " copied! Tap ⋮ menu -> Open in Chrome or paste inside Firebattle app.");
           }
         });
+
+        if (params.get("openFailed") === "1") {
+          showToast("App not detected! Code " + raw + " copied — download APK & paste in app.");
+        }
 
         document.querySelectorAll(".js-apk-download").forEach(function (el) {
           el.addEventListener("click", function () {
