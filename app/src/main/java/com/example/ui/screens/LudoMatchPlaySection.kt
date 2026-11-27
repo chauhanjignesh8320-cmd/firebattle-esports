@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -9,7 +10,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -20,10 +20,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material3.AlertDialog
@@ -37,6 +39,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -45,7 +48,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -283,14 +288,44 @@ fun LudoMatchBoardStage(
 ) {
     var showForfeitConfirm by rememberSaveable { mutableStateOf(false) }
     val scrollState = rememberScrollState()
+    val haptics = LocalHapticFeedback.current
+
+    val isCaptureEvent = lastAction.contains("captured", ignoreCase = true)
+    val isWinOrHomeEvent = lastAction.contains("WON", ignoreCase = true) || lastAction.contains("Home", ignoreCase = true)
+    val isBonusSixEvent = lastAction.contains("Bonus", ignoreCase = true) || lastAction.contains("deployed a token on 6", ignoreCase = true)
+
+    LaunchedEffect(lastAction) {
+        if (isCaptureEvent || isWinOrHomeEvent) {
+            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        }
+    }
+
+    val tickerBorder by animateColorAsState(
+        targetValue = when {
+            isCaptureEvent -> CrimsonReject
+            isWinOrHomeEvent -> EmeraldWin
+            isBonusSixEvent -> CoinGold
+            else -> ArenaSlateBorder
+        },
+        label = "ticker_border"
+    )
+    val tickerBg by animateColorAsState(
+        targetValue = when {
+            isCaptureEvent -> CrimsonReject.copy(alpha = 0.16f)
+            isWinOrHomeEvent -> EmeraldWinContainer
+            isBonusSixEvent -> CoinGold.copy(alpha = 0.14f)
+            else -> ArenaSlateDark
+        },
+        label = "ticker_bg"
+    )
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(scrollState)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(horizontal = 12.dp, vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         // Match mode + Prize pill + Forfeit action
         Row(
@@ -325,7 +360,7 @@ fun LudoMatchBoardStage(
                 },
                 border = BorderStroke(1.dp, if (winnerName != null) EmeraldWin else CrimsonReject.copy(alpha = 0.7f)),
                 modifier = Modifier
-                    .heightIn(min = 42.dp)
+                    .heightIn(min = 48.dp)
                     .testTag("ludo_forfeit_or_exit_button")
             ) {
                 Icon(
@@ -350,14 +385,14 @@ fun LudoMatchBoardStage(
         // Top HUD: Yellow Player (Slot 1: Guest / Bot / Player 2)
         LudoPlayerHudBar(
             name = guestName,
-            colorLabel = if (isBotOpponent) "BOT (YELLOW)" else "YELLOW",
+            colorLabel = if (isBotOpponent) "BOT • YELLOW" else "YELLOW",
             accentColor = Color(0xFFFACC15),
             tokens = guestTokens,
             isActiveTurn = activeTurnSlot == 1 && winnerName == null,
             isBot = isBotOpponent
         )
 
-        // 15x15 Interactive Board
+        // 15x15 Classic Wooden Interactive Board
         LudoBoardCanvas(
             hostTokens = hostTokens,
             guestTokens = guestTokens,
@@ -370,24 +405,44 @@ fun LudoMatchBoardStage(
 
         // Action Status Ticker
         Surface(
-            color = ArenaSlateDark,
-            shape = RoundedCornerShape(10.dp),
-            border = BorderStroke(1.dp, ArenaSlateBorder),
+            color = tickerBg,
+            shape = RoundedCornerShape(12.dp),
+            border = BorderStroke(1.2.dp, tickerBorder),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text(
-                text = lastAction.ifBlank { "Roll the dice!" },
-                style = MaterialTheme.typography.bodySmall,
-                color = TextPrimary,
-                fontWeight = FontWeight.SemiBold,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                if (isCaptureEvent || isWinOrHomeEvent || isBonusSixEvent) {
+                    Icon(
+                        imageVector = if (isWinOrHomeEvent) Icons.Filled.EmojiEvents else Icons.Filled.AutoAwesome,
+                        contentDescription = null,
+                        tint = when {
+                            isCaptureEvent -> CrimsonReject
+                            isWinOrHomeEvent -> EmeraldWin
+                            else -> CoinGold
+                        },
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                }
+                Text(
+                    text = lastAction.ifBlank { "Tap the dice to start!" },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextPrimary,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
 
-        // Bottom HUD: Red Player (Slot 0: Host / Player 1) + Interactive Dice Control
+        // Bottom HUD: Red Player (Slot 0: Host / Player 1) + Interactive 3D Dice Tray
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -396,7 +451,7 @@ fun LudoMatchBoardStage(
             LudoPlayerHudBar(
                 name = hostName,
                 colorLabel = "RED",
-                accentColor = Color(0xFFEF4444),
+                accentColor = Color(0xFFE52521),
                 tokens = hostTokens,
                 isActiveTurn = activeTurnSlot == 0 && winnerName == null,
                 isBot = false,
@@ -544,19 +599,29 @@ private fun LudoPlayerHudBar(
     modifier: Modifier = Modifier
 ) {
     val homeCount = tokens.count { it == LudoEngine.HOME_PROGRESS }
+    val surfaceColor by animateColorAsState(
+        targetValue = if (isActiveTurn) accentColor.copy(alpha = 0.14f) else ArenaSlateDark,
+        label = "hud_bg"
+    )
+    val borderColor by animateColorAsState(
+        targetValue = if (isActiveTurn) CoinGold else ArenaSlateBorder,
+        label = "hud_border"
+    )
+
     Surface(
-        color = ArenaSlateDark,
-        shape = RoundedCornerShape(12.dp),
+        color = surfaceColor,
+        shape = RoundedCornerShape(14.dp),
         border = BorderStroke(
             width = if (isActiveTurn) 2.dp else 1.dp,
-            color = if (isActiveTurn) CoinGold else ArenaSlateBorder
+            color = borderColor
         ),
+        shadowElevation = if (isActiveTurn) 4.dp else 0.dp,
         modifier = modifier
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 9.dp),
+                .padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -568,7 +633,8 @@ private fun LudoPlayerHudBar(
                 Surface(
                     color = accentColor,
                     shape = CircleShape,
-                    modifier = Modifier.size(28.dp)
+                    border = BorderStroke(1.5.dp, if (isActiveTurn) Color.White else accentColor),
+                    modifier = Modifier.size(32.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         if (isBot) {
@@ -576,48 +642,84 @@ private fun LudoPlayerHudBar(
                                 imageVector = Icons.Filled.SmartToy,
                                 contentDescription = null,
                                 tint = Color.Black,
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                         } else {
                             Text(
                                 text = name.firstOrNull()?.uppercase() ?: "P",
-                                style = MaterialTheme.typography.labelMedium,
+                                style = MaterialTheme.typography.labelLarge,
                                 color = if (accentColor.red > 0.8f && accentColor.green > 0.7f) Color.Black else Color.White,
                                 fontWeight = FontWeight.ExtraBold
                             )
                         }
                     }
                 }
-                Column {
+                Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = name,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = TextPrimary,
+                            fontWeight = FontWeight.ExtraBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        if (isActiveTurn) {
+                            Surface(
+                                color = CoinGold,
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text(
+                                    text = "TURN",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = ArenaObsidian,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                )
+                            }
+                        }
+                    }
                     Text(
-                        text = name,
-                        style = MaterialTheme.typography.titleSmall,
-                        color = TextPrimary,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = if (isActiveTurn) "$colorLabel • YOUR TURN" else "$colorLabel • $homeCount/4 Home",
+                        text = "$colorLabel • $homeCount/4 Home",
                         style = MaterialTheme.typography.labelSmall,
                         color = if (isActiveTurn) CoinGold else TextSecondary,
-                        fontWeight = if (isActiveTurn) FontWeight.ExtraBold else FontWeight.Normal
+                        fontWeight = if (isActiveTurn) FontWeight.Bold else FontWeight.Normal
                     )
                 }
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 tokens.forEach { prog ->
-                    val dotColor = when {
-                        prog == LudoEngine.HOME_PROGRESS -> EmeraldWin
-                        prog > 0 -> accentColor
-                        else -> ArenaSlateBorder
+                    val isHome = prog == LudoEngine.HOME_PROGRESS
+                    val isOut = prog > 0 && !isHome
+                    Surface(
+                        color = when {
+                            isHome -> EmeraldWin
+                            isOut -> accentColor
+                            else -> ArenaObsidian
+                        },
+                        shape = CircleShape,
+                        border = BorderStroke(
+                            1.dp,
+                            if (isHome || isOut) Color.White.copy(alpha = 0.75f) else ArenaSlateBorder
+                        ),
+                        modifier = Modifier.size(14.dp)
+                    ) {
+                        if (isHome) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Filled.Home,
+                                    contentDescription = "Token Home",
+                                    tint = ArenaObsidian,
+                                    modifier = Modifier.size(9.dp)
+                                )
+                            }
+                        }
                     }
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .background(dotColor, CircleShape)
-                    )
                 }
             }
         }
