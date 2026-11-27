@@ -71,6 +71,7 @@ import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.data.model.AppSettings
 import com.example.data.model.GameTitle
+import com.example.data.model.LudoRoom
 import com.example.data.model.MatchRegistration
 import com.example.data.model.TournamentMatch
 import com.example.data.model.UserProfile
@@ -123,6 +124,8 @@ fun PlayerHomeArenaSection(
     completedMatches: List<TournamentMatch>,
     joinedIds: Set<String>,
     myRegistrations: List<MatchRegistration>,
+    activeLudoBoards: List<LudoRoom> = emptyList(),
+    onOpenLudoBoard: (LudoRoom) -> Unit = {},
     onOpenArenaFilter: (ArenaFilterSelection) -> Unit,
     onOpenLudo: (String) -> Unit = {},
     onOpenWallet: () -> Unit,
@@ -296,6 +299,16 @@ fun PlayerHomeArenaSection(
                             .padding(horizontal = 14.dp, vertical = 10.dp)
                     )
                 }
+            }
+        }
+
+        if (activeLudoBoards.isNotEmpty()) {
+            item {
+                ActiveLudoBoardsBanner(
+                    boards = activeLudoBoards,
+                    currentUserId = profile.userId,
+                    onOpenBoard = onOpenLudoBoard
+                )
             }
         }
 

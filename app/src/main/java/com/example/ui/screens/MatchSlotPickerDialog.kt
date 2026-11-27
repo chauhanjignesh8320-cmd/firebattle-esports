@@ -57,7 +57,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.R
+import com.example.data.model.GameTitle
 import com.example.data.model.TeamFormat
+import com.example.data.model.TournamentLudoPairing
 import com.example.data.model.TournamentMatch
 import com.example.data.model.UserProfile
 import com.example.ui.theme.ArenaInkDark
@@ -109,6 +111,7 @@ fun MatchSlotPickerDialog(
     val hasEnoughBalance = profile.wallet >= match.entry
     val shortage = (match.entry - profile.wallet).coerceAtLeast(0L)
     val resolvedFormat = TeamFormat.fromRaw(match.teamFormat).label
+    val isLudoTournament = match.game == GameTitle.LUDO.label
     val isTeamSplit = resolvedFormat in listOf("1vs1", "2vs2", "3vs3", "4vs4")
     val teamHalf = (totalSlots / 2L).coerceAtLeast(1L)
 
@@ -204,7 +207,14 @@ fun MatchSlotPickerDialog(
                             label = "Your Slot"
                         )
                     }
-                    if (isTeamSplit) {
+                    if (isLudoTournament) {
+                        Text(
+                            text = "$resolvedFormat Ludo Boards (#1 vs #${teamHalf + 1}${if (teamHalf > 1L) ", #2 vs #${teamHalf + 2}..." else ""}) • Book any slot now; tap PLAY LUDO at ${match.matchTime}.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = ContestPurple,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    } else if (isTeamSplit) {
                         Text(
                             text = "$resolvedFormat Room Split: Slots 1–$teamHalf = Team 1  •  Slots ${teamHalf + 1}–$totalSlots = Team 2",
                             style = MaterialTheme.typography.labelSmall,
@@ -336,6 +346,17 @@ fun MatchSlotPickerDialog(
                             )
                         }
                     } else {
+                        val activeSlotChoice = selectedSlot
+                        if (isLudoTournament && activeSlotChoice != null) {
+                            val myBoard = TournamentLudoPairing.boardForSlot(activeSlotChoice, totalSlots)
+                            val oppSlot = TournamentLudoPairing.opponentSlotFor(activeSlotChoice, totalSlots)
+                            Text(
+                                text = "Slot #$activeSlotChoice plays on Board #$myBoard vs Slot #$oppSlot — match starts automatically whenever both players open Board #$myBoard.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = WalletTealDark,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                         val canConfirm = selectedSlot != null && isIgnValid && !isBusy
                         Button(
                             onClick = {

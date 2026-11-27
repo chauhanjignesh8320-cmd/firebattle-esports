@@ -16,6 +16,7 @@ import androidx.core.content.ContextCompat
 import com.example.MainActivity
 import com.example.R
 import com.example.data.model.AppSettings
+import com.example.data.model.LudoRoom
 import com.example.data.model.MatchMode
 import com.example.data.model.TeamFormat
 import com.example.data.model.TournamentMatch
@@ -83,6 +84,54 @@ fun notifyRoomCredentialsReady(context: Context, match: TournamentMatch) {
 
     runCatching {
         NotificationManagerCompat.from(appContext).notify(match.id.hashCode(), notification)
+    }
+}
+
+fun notifyLudoBoardReady(
+    context: Context,
+    room: LudoRoom,
+    title: String,
+    message: String
+) {
+    if (!hasNotificationPermission(context)) return
+    if (room.id.isBlank()) return
+
+    val appContext = context.applicationContext
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        val manager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        if (manager != null && manager.getNotificationChannel(ROOM_ALERTS_CHANNEL_ID) == null) {
+            val channel = NotificationChannel(
+                ROOM_ALERTS_CHANNEL_ID,
+                "Match Room Alerts",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Alerts when Room ID, Password or Ludo Boards are live for your joined matches."
+            }
+            manager.createNotificationChannel(channel)
+        }
+    }
+
+    val openIntent = Intent(appContext, MainActivity::class.java).apply {
+        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+    }
+    val pendingIntent = PendingIntent.getActivity(
+        appContext,
+        ("ludo_${room.id}").hashCode(),
+        openIntent,
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
+
+    val notification = NotificationCompat.Builder(appContext, ROOM_ALERTS_CHANNEL_ID)
+        .setSmallIcon(R.mipmap.ic_launcher)
+        .setContentTitle(title)
+        .setContentText(message)
+        .setPriority(NotificationCompat.PRIORITY_HIGH)
+        .setAutoCancel(true)
+        .setContentIntent(pendingIntent)
+        .build()
+
+    runCatching {
+        NotificationManagerCompat.from(appContext).notify(("ludo_${room.id}").hashCode(), notification)
     }
 }
 

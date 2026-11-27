@@ -101,12 +101,14 @@ import com.example.data.model.AppSettings
 import com.example.data.model.DepositRequest
 import com.example.data.model.GameTitle
 import com.example.data.model.LudoRoom
+import com.example.data.model.LudoRoomStatus
 import com.example.data.model.MatchMode
 import com.example.data.model.MatchRegistration
 import com.example.data.model.MatchStatus
 import com.example.data.model.PlayerTab
 import com.example.data.model.ReferralRecord
 import com.example.data.model.TeamFormat
+import com.example.data.model.TournamentLudoPairing
 import com.example.data.model.TournamentMatch
 import com.example.data.model.UiState
 import com.example.data.model.UserProfile
@@ -119,6 +121,7 @@ import com.example.ui.components.TournamentRulesHeroBanner
 import com.example.ui.components.formatTimestampShort
 import com.example.ui.components.hasInternetConnection
 import com.example.ui.components.hasNotificationPermission
+import com.example.ui.components.notifyLudoBoardReady
 import com.example.ui.components.notifyRoomCredentialsReady
 import com.example.ui.theme.ArenaInkDark
 import com.example.ui.theme.ArenaInkMuted
@@ -191,6 +194,136 @@ fun PlayerDashboardScreen(
         emptyList()
     }
 
+    val myLudoRoomsUiState = if (ludoViewModel != null) {
+        val st by ludoViewModel.myRoomsState.collectAsStateWithLifecycle()
+        st
+    } else {
+        UiState.Success(emptyList())
+    }
+    val waitingLudoRoomsUiState = if (ludoViewModel != null) {
+        val st by ludoViewModel.waitingRoomsState.collectAsStateWithLifecycle()
+        st
+    } else {
+        UiState.Success(emptyList())
+    }
+    val activeLudoRoomId = if (ludoViewModel != null) {
+        val id by ludoViewModel.activeRoomId.collectAsStateWithLifecycle()
+        id
+    } else {
+        null
+    }
+
+    val myLudoRooms = (myLudoRoomsUiState as? UiState.Success)?.data.orEmpty()
+    val waitingLudoRooms = (waitingLudoRoomsUiState as? UiState.Success)?.data.orEmpty()
+
+    val liveAllMatches = (matchesState as? UiState.Success)?.data.orEmpty()
+    val completedAllMatches = (completedMatchesState as? UiState.Success)?.data.orEmpty()
+    val joinedIds = (joinedMatchIdsState as? UiState.Success)?.data ?: emptySet()
+    val myRegs = (myRegistrationsListState as? UiState.Success)?.data.orEmpty()
+
+    val joinedLudoPairs = remember(liveAllMatches, myRegs) {
+        val regByMatch = myRegs.associateBy { it.matchId }
+        liveAllMatches.mapNotNull { match ->
+            if (match.game != GameTitle.LUDO.label) return@mapNotNull null
+            val reg = regByMatch[match.id] ?: return@mapNotNull null
+            if (reg.slotNumber !in 1L..match.slots) return@mapNotNull null
+            val boardNum = TournamentLudoPairing.boardForSlot(reg.slotNumber, match.slots)
+            val expectedRoomId = TournamentLudoPairing.roomDocId(match.id, boardNum)
+            Triple(expectedRoomId, match, reg)
+        }
+    }
+    val joinedLudoPairByMatchId = remember(joinedLudoPairs) {
+        joinedLudoPairs.associate { (_, match, reg) -> match.id to (match to reg) }
+    }
+    val expectedTournamentRoomIds = remember(joinedLudoPairs) {
+        joinedLudoPairs.map { it.first }.toSet()
+    }
+    val ludoBoardByMatchId = remember(joinedLudoPairs, myLudoRooms, waitingLudoRooms) {
+        val byId = (waitingLudoRooms + myLudoRooms).associateBy { it.id }
+        buildMap {
+            joinedLudoPairs.forEach { (roomId, match, _) ->
+                byId[roomId]?.let { put(match.id, it) }
+            }
+        }
+    }
+    val activeLudoBoards = remember(myLudoRooms, waitingLudoRooms, expectedTournamentRoomIds, profile.userId) {
+        val playing = myLudoRooms
+            .filter { LudoRoomStatus.fromRaw(it.status) == LudoRoomStatus.PLAYING }
+            .sortedByDescending { room ->
+                val mySlot = if (room.hostUid == profile.userId) 0 else 1
+                room.turnSlot.toInt() == mySlot
+            }
+        val opponentWaiting = waitingLudoRooms.filter {
+            it.isTournamentBoard && it.id in expectedTournamentRoomIds && it.hostUid != profile.userId
+        }
+        val myWaiting = myLudoRooms.filter {
+            LudoRoomStatus.fromRaw(it.status) == LudoRoomStatus.WAITING
+        }
+        (playing + opponentWaiting + myWaiting).distinctBy { it.id }
+    }
+
+    var seededMyRooms by remember { mutableStateOf(false) }
+    val prevMyRoomStatus = remember { mutableMapOf<String, String>() }
+    LaunchedEffect(myLudoRoomsUiState, showLudoArena, activeLudoRoomId) {
+        val list = (myLudoRoomsUiState as? UiState.Success)?.data ?: return@LaunchedEffect
+        if (!seededMyRooms) {
+            list.forEach { prevMyRoomStatus[it.id] = it.status }
+            seededMyRooms = true
+            return@LaunchedEffect
+        }
+        list.forEach { room ->
+            val prev = prevMyRoomStatus[room.id]
+            val viewingThisRoom = showLudoArena && activeLudoRoomId == room.id
+            if (prev == LudoRoomStatus.WAITING.wireValue &&
+                room.status == LudoRoomStatus.PLAYING.wireValue &&
+                room.hostUid == profile.userId &&
+                !viewingThisRoom
+            ) {
+                val boardName = if (room.isTournamentBoard) "Board #${room.boardNumber}" else "Table ${room.roomCode}"
+                val opp = room.guestIgn.ifBlank { "Opponent" }
+                onCopyFeedback("$opp joined $boardName! Tap Resume to roll.")
+                notifyLudoBoardReady(
+                    context = context,
+                    room = room,
+                    title = "$boardName Live — Your Turn!",
+                    message = "$opp joined your Ludo board. Tap to roll the dice!"
+                )
+            }
+            prevMyRoomStatus[room.id] = room.status
+        }
+    }
+
+    var seededOppWaiting by remember { mutableStateOf(false) }
+    val seenOppWaitingIds = remember { mutableSetOf<String>() }
+    LaunchedEffect(waitingLudoRoomsUiState, expectedTournamentRoomIds, showLudoArena, activeLudoRoomId) {
+        val waitingList = (waitingLudoRoomsUiState as? UiState.Success)?.data ?: return@LaunchedEffect
+        if (matchesState !is UiState.Success || myRegistrationsListState !is UiState.Success) return@LaunchedEffect
+        val oppBoards = waitingList.filter {
+            it.isTournamentBoard && it.id in expectedTournamentRoomIds && it.hostUid != profile.userId
+        }
+        if (!seededOppWaiting) {
+            oppBoards.forEach { seenOppWaitingIds.add(it.id) }
+            seededOppWaiting = true
+            return@LaunchedEffect
+        }
+        oppBoards.forEach { room ->
+            if (room.id !in seenOppWaitingIds) {
+                seenOppWaitingIds.add(room.id)
+                val viewingThisRoom = showLudoArena && activeLudoRoomId == room.id
+                if (!viewingThisRoom) {
+                    val host = room.hostIgn.ifBlank { "Opponent" }
+                    onCopyFeedback("$host is waiting on Ludo Board #${room.boardNumber}! Tap Join Board.")
+                    notifyLudoBoardReady(
+                        context = context,
+                        room = room,
+                        title = "Ludo Board #${room.boardNumber} Ready!",
+                        message = "$host is waiting on Board #${room.boardNumber}. Tap to join & play!"
+                    )
+                }
+            }
+        }
+    }
+
     val playLudoBoardAction: (TournamentMatch, MatchRegistration) -> Unit = { match, reg ->
         if (!hasInternetConnection(context)) {
             onCopyFeedback("Turn on internet to open the live Ludo board.")
@@ -199,6 +332,22 @@ fun PlayerDashboardScreen(
                 inspectedMatch = null
                 onSetShowLudoArena(true)
             }
+        }
+    }
+
+    val openActiveLudoBoardAction: (LudoRoom) -> Unit = { room ->
+        val isParticipant = room.hostUid == profile.userId || room.guestUid == profile.userId
+        if (!isParticipant && room.isTournamentBoard) {
+            val pair = joinedLudoPairByMatchId[room.matchId]
+            if (pair != null) {
+                playLudoBoardAction(pair.first, pair.second)
+            } else {
+                ludoViewModel?.openOnlineRoom(room.id)
+                onSetShowLudoArena(true)
+            }
+        } else {
+            ludoViewModel?.openOnlineRoom(room.id)
+            onSetShowLudoArena(true)
         }
     }
 
@@ -220,22 +369,21 @@ fun PlayerDashboardScreen(
     }
 
     if (showLudoArena && ludoViewModel != null) {
-        val liveAll = (matchesState as? UiState.Success)?.data.orEmpty()
-        val completedAll = (completedMatchesState as? UiState.Success)?.data.orEmpty()
-        val joinedIds = (joinedMatchIdsState as? UiState.Success)?.data ?: emptySet()
-        val myRegs = (myRegistrationsListState as? UiState.Success)?.data.orEmpty()
         LudoArenaScreen(
             ludoViewModel = ludoViewModel,
             profile = profile,
-            liveLudoMatches = liveAll.filter { it.game == GameTitle.LUDO.label },
-            completedLudoMatches = completedAll.filter { it.game == GameTitle.LUDO.label },
+            liveLudoMatches = liveAllMatches.filter { it.game == GameTitle.LUDO.label },
+            completedLudoMatches = completedAllMatches.filter { it.game == GameTitle.LUDO.label },
             joinedIds = joinedIds,
             myRegistrations = myRegs,
+            activeLudoBoards = activeLudoBoards,
+            ludoBoardByMatchId = ludoBoardByMatchId,
             initialFormatFilter = ludoInitialFormat,
             isMatchBusy = isBusy,
             onRequestJoinMatch = { pendingJoinMatch = it },
             onInspectMatch = { inspectedMatch = it },
             onPlayLudoMatch = playLudoBoardAction,
+            onOpenLudoBoard = openActiveLudoBoardAction,
             onBackToHome = { onSetShowLudoArena(false) },
             onOpenWallet = {
                 onSetShowLudoArena(false)
@@ -294,6 +442,8 @@ fun PlayerDashboardScreen(
                         depositsState = depositsState,
                         withdrawalsState = withdrawalsState,
                         referralsState = referralsState,
+                        activeLudoBoards = activeLudoBoards,
+                        ludoBoardByMatchId = ludoBoardByMatchId,
                         initialReferralCode = initialReferralCode,
                         referralDeepLinkTrigger = referralDeepLinkTrigger,
                         isBusy = isBusy,
@@ -302,6 +452,7 @@ fun PlayerDashboardScreen(
                             ludoInitialFormat = fmt
                             onSetShowLudoArena(true)
                         },
+                        onOpenLudoBoard = openActiveLudoBoardAction,
                         onEditProfile = { showEditProfileDialog = true },
                         onRequestJoin = { pendingJoinMatch = it },
                         onInspectMatch = { inspectedMatch = it },
@@ -365,6 +516,8 @@ fun PlayerDashboardScreen(
                     depositsState = depositsState,
                     withdrawalsState = withdrawalsState,
                     referralsState = referralsState,
+                    activeLudoBoards = activeLudoBoards,
+                    ludoBoardByMatchId = ludoBoardByMatchId,
                     initialReferralCode = initialReferralCode,
                     referralDeepLinkTrigger = referralDeepLinkTrigger,
                     isBusy = isBusy,
@@ -373,6 +526,7 @@ fun PlayerDashboardScreen(
                         ludoInitialFormat = fmt
                         onSetShowLudoArena(true)
                     },
+                    onOpenLudoBoard = openActiveLudoBoardAction,
                     onEditProfile = { showEditProfileDialog = true },
                     onRequestJoin = { pendingJoinMatch = it },
                     onInspectMatch = { inspectedMatch = it },
@@ -546,11 +700,14 @@ private fun PlayerTabContent(
     depositsState: UiState<List<DepositRequest>>,
     withdrawalsState: UiState<List<WithdrawalRequest>>,
     referralsState: UiState<List<ReferralRecord>>,
+    activeLudoBoards: List<LudoRoom> = emptyList(),
+    ludoBoardByMatchId: Map<String, LudoRoom> = emptyMap(),
     initialReferralCode: String = "",
     referralDeepLinkTrigger: Int = 0,
     isBusy: Boolean,
     onSelectTab: (PlayerTab) -> Unit,
     onOpenLudo: (String) -> Unit,
+    onOpenLudoBoard: (LudoRoom) -> Unit = {},
     onEditProfile: () -> Unit,
     onRequestJoin: (TournamentMatch) -> Unit,
     onInspectMatch: (TournamentMatch) -> Unit,
@@ -574,9 +731,12 @@ private fun PlayerTabContent(
             completedMatchesState = completedMatchesState,
             joinedMatchIdsState = joinedMatchIdsState,
             myRegistrationsListState = myRegistrationsListState,
+            activeLudoBoards = activeLudoBoards,
+            ludoBoardByMatchId = ludoBoardByMatchId,
             isBusy = isBusy,
             onSelectTab = onSelectTab,
             onOpenLudo = onOpenLudo,
+            onOpenLudoBoard = onOpenLudoBoard,
             onEditProfile = onEditProfile,
             onRequestJoin = onRequestJoin,
             onInspectMatch = onInspectMatch,
@@ -713,9 +873,12 @@ private fun TournamentsSection(
     completedMatchesState: UiState<List<TournamentMatch>>,
     joinedMatchIdsState: UiState<Set<String>>,
     myRegistrationsListState: UiState<List<MatchRegistration>>,
+    activeLudoBoards: List<LudoRoom> = emptyList(),
+    ludoBoardByMatchId: Map<String, LudoRoom> = emptyMap(),
     isBusy: Boolean,
     onSelectTab: (PlayerTab) -> Unit,
     onOpenLudo: (String) -> Unit,
+    onOpenLudoBoard: (LudoRoom) -> Unit = {},
     onEditProfile: () -> Unit,
     onRequestJoin: (TournamentMatch) -> Unit,
     onInspectMatch: (TournamentMatch) -> Unit,
@@ -768,6 +931,8 @@ private fun TournamentsSection(
             completedMatches = completedMatchesList,
             joinedIds = joinedIds,
             myRegistrations = myRegistrations,
+            activeLudoBoards = activeLudoBoards,
+            onOpenLudoBoard = onOpenLudoBoard,
             onOpenArenaFilter = { selection ->
                 feedFilter = when {
                     selection.feed == "Results" -> "Results"
@@ -928,6 +1093,8 @@ private fun TournamentsSection(
                                 match = match,
                                 alreadyJoined = match.id in joinedIds,
                                 myRegistration = myRegByMatch[match.id],
+                                ludoBoardRoom = ludoBoardByMatchId[match.id],
+                                currentUserId = profile.userId,
                                 isBusy = isBusy,
                                 onJoinClick = { onRequestJoin(match) },
                                 onViewMoreClick = { onInspectMatch(match) },
@@ -946,6 +1113,8 @@ internal fun TournamentMatchCard(
     match: TournamentMatch,
     alreadyJoined: Boolean,
     myRegistration: MatchRegistration?,
+    ludoBoardRoom: LudoRoom? = null,
+    currentUserId: String = "",
     isBusy: Boolean,
     onJoinClick: () -> Unit,
     onViewMoreClick: () -> Unit,
@@ -1064,6 +1233,50 @@ internal fun TournamentMatchCard(
                     )
                 }
 
+                val cardCompleted = MatchStatus.fromRaw(match.status) == MatchStatus.COMPLETED
+                if (match.game == GameTitle.LUDO.label && alreadyJoined && !cardCompleted && myRegistration != null) {
+                    val boardNum = if (myRegistration.slotNumber > 0L) {
+                        TournamentLudoPairing.boardForSlot(myRegistration.slotNumber, match.slots)
+                    } else 1L
+                    val boardStatus = ludoBoardRoom?.let { LudoRoomStatus.fromRaw(it.status) }
+                    val isParticipant = ludoBoardRoom != null &&
+                        (ludoBoardRoom.hostUid == currentUserId || ludoBoardRoom.guestUid == currentUserId)
+                    val isHost = ludoBoardRoom != null && ludoBoardRoom.hostUid == currentUserId
+                    val isMyTurn = boardStatus == LudoRoomStatus.PLAYING && isParticipant &&
+                        ludoBoardRoom?.turnSlot?.toInt() == (if (isHost) 0 else 1)
+                    val statusMsg = when {
+                        boardStatus == LudoRoomStatus.WAITING && !isParticipant && ludoBoardRoom != null ->
+                            "⚡ ${ludoBoardRoom.hostIgn} is waiting on Board #$boardNum — Tap JOIN BOARD!"
+                        boardStatus == LudoRoomStatus.PLAYING && isMyTurn ->
+                            "🎲 Board #$boardNum is LIVE — YOUR TURN!"
+                        boardStatus == LudoRoomStatus.PLAYING ->
+                            "Board #$boardNum LIVE (${ludoBoardRoom?.hostIgn} vs ${ludoBoardRoom?.guestIgn})"
+                        boardStatus == LudoRoomStatus.WAITING ->
+                            "⏳ Board #$boardNum reserved — opponent joins when they tap PLAY LUDO"
+                        else ->
+                            "Slot #${myRegistration.slotNumber} • Board #$boardNum opens when either player taps PLAY LUDO"
+                    }
+                    val pillColor = when {
+                        (boardStatus == LudoRoomStatus.WAITING && !isParticipant) || isMyTurn -> EmeraldWin
+                        boardStatus == LudoRoomStatus.PLAYING -> BlazeOrange
+                        else -> ContestPurple
+                    }
+                    Surface(
+                        color = pillColor.copy(alpha = 0.12f),
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, pillColor.copy(alpha = 0.45f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = statusMsg,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = pillColor,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+
                 // Bottom Row: Progress Bar + JOIN / JOINED Button
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1107,9 +1320,24 @@ internal fun TournamentMatchCard(
                         !isCompleted &&
                         myRegistration != null &&
                         onPlayLudoClick != null
+                    val ludoStatus = ludoBoardRoom?.let { LudoRoomStatus.fromRaw(it.status) }
+                    val isHostOfBoard = ludoBoardRoom != null && ludoBoardRoom.hostUid == currentUserId
+                    val isParticipantOfBoard = ludoBoardRoom != null &&
+                        (ludoBoardRoom.hostUid == currentUserId || ludoBoardRoom.guestUid == currentUserId)
+                    val isMyLudoTurn = ludoStatus == LudoRoomStatus.PLAYING && isParticipantOfBoard &&
+                        ludoBoardRoom?.turnSlot?.toInt() == (if (isHostOfBoard) 0 else 1)
+                    val oppWaitingOnBoard = ludoStatus == LudoRoomStatus.WAITING &&
+                        ludoBoardRoom != null &&
+                        !isParticipantOfBoard
+
                     val actionLabel = when {
                         isCompleted && (myRegistration?.prizeWon ?: 0L) > 0L -> "WON ₹${myRegistration?.prizeWon}"
                         isCompleted -> "RESULTS"
+                        canPlayInAppLudo && oppWaitingOnBoard -> "JOIN BOARD"
+                        canPlayInAppLudo && isMyLudoTurn -> "YOUR TURN"
+                        canPlayInAppLudo && ludoStatus == LudoRoomStatus.PLAYING -> "RESUME"
+                        canPlayInAppLudo && ludoStatus == LudoRoomStatus.WAITING -> "WAITING"
+                        canPlayInAppLudo && ludoStatus == LudoRoomStatus.COMPLETED -> "VIEW BOARD"
                         canPlayInAppLudo -> "PLAY LUDO"
                         alreadyJoined && myRegistration != null && myRegistration.slotNumber > 0L ->
                             "SLOT #${myRegistration.slotNumber}"
@@ -1118,6 +1346,7 @@ internal fun TournamentMatchCard(
                         else -> "JOIN"
                     }
                     val actionColor = when {
+                        canPlayInAppLudo && (oppWaitingOnBoard || isMyLudoTurn) -> EmeraldWin
                         canPlayInAppLudo -> BlazeOrange
                         alreadyJoined -> EmeraldWin
                         isCompleted || isFull -> ArenaInkMuted
@@ -1129,7 +1358,7 @@ internal fun TournamentMatchCard(
                             onClick = { myRegistration?.let { onPlayLudoClick?.invoke(it) } },
                             enabled = !isBusy,
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = BlazeOrange,
+                                containerColor = actionColor,
                                 contentColor = ArenaWhiteCard
                             ),
                             shape = RoundedCornerShape(6.dp),

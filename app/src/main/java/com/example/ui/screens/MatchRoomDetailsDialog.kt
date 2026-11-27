@@ -367,11 +367,21 @@ fun MatchRoomDetailsDialog(
                             }
 
                             if (alreadyJoined && !isCompleted && myRegistration != null && onPlayLudoBoard != null) {
+                                val myBoardRoom = boardByNum[myBoardNum]
+                                val myBoardStatus = myBoardRoom?.let { LudoRoomStatus.fromRaw(it.status) }
+                                val myButtonLabel = when {
+                                    myBoardStatus == LudoRoomStatus.WAITING && myBoardRoom.hostUid != myRegistration.userId ->
+                                        "JOIN ${myBoardRoom.hostIgn.uppercase()} ON BOARD #$myBoardNum"
+                                    myBoardStatus == LudoRoomStatus.PLAYING ->
+                                        "RESUME LIVE BOARD #$myBoardNum"
+                                    myBoardNum > 0 -> "PLAY IN-APP LUDO (BOARD #$myBoardNum)"
+                                    else -> "PLAY IN-APP LUDO"
+                                }
                                 Button(
                                     onClick = { onPlayLudoBoard(myRegistration) },
                                     colors = ButtonDefaults.buttonColors(
-                                        containerColor = BlazeOrange,
-                                        contentColor = Color.White
+                                        containerColor = if (myBoardStatus == LudoRoomStatus.WAITING && myBoardRoom.hostUid != myRegistration.userId) EmeraldWin else BlazeOrange,
+                                        contentColor = if (myBoardStatus == LudoRoomStatus.WAITING && myBoardRoom.hostUid != myRegistration.userId) ArenaObsidian else Color.White
                                     ),
                                     shape = RoundedCornerShape(12.dp),
                                     modifier = Modifier
@@ -382,7 +392,7 @@ fun MatchRoomDetailsDialog(
                                     Icon(Icons.Filled.Casino, contentDescription = null, modifier = Modifier.size(20.dp))
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = if (myBoardNum > 0) "PLAY IN-APP LUDO (BOARD #$myBoardNum)" else "PLAY IN-APP LUDO",
+                                        text = myButtonLabel,
                                         fontWeight = FontWeight.ExtraBold
                                     )
                                 }
@@ -494,10 +504,20 @@ fun MatchRoomDetailsDialog(
                 val bannerSubtext = when {
                     isCompleted && match.winnerSummary.isNotBlank() -> "Winners: ${match.winnerSummary}"
                     isCompleted -> "Match finished. Check My Entries or Results for payout details."
-                    isLudoTournament && alreadyJoined ->
-                        "Tap PLAY LUDO below to enter Board #$myBoardNum inside the app — opponent joins automatically."
+                    isLudoTournament && alreadyJoined -> {
+                        val myBoardRoom = boardByNum[myBoardNum]
+                        val myBoardStatus = myBoardRoom?.let { LudoRoomStatus.fromRaw(it.status) }
+                        when {
+                            myBoardStatus == LudoRoomStatus.WAITING && myRegistration != null && myBoardRoom.hostUid != myRegistration.userId ->
+                                "${myBoardRoom.hostIgn} is waiting on Board #$myBoardNum! Tap PLAY LUDO below to start."
+                            myBoardStatus == LudoRoomStatus.PLAYING ->
+                                "Board #$myBoardNum is LIVE! Tap PLAY LUDO to continue playing."
+                            else ->
+                                "Book anytime before ${match.matchTime}. Tap PLAY LUDO at match time — your board starts live automatically as soon as both players open Board #$myBoardNum!"
+                        }
+                    }
                     isLudoTournament ->
-                        "Select your Slot #1..#${match.slots} & play Ludo directly inside our app."
+                        "Select your Slot #1..#${match.slots} anytime before ${match.matchTime} & play inside our app."
                     alreadyJoined && match.roomId.isNotBlank() ->
                         "Hurry Up! Match is starting soon — join in game and sit in Slot #${if (bookedSlot > 0L) bookedSlot else "?"}."
                     alreadyJoined ->
@@ -592,9 +612,9 @@ fun MatchRoomDetailsDialog(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (isLudoTournament) {
-                        Text("1. Join the Ludo tournament and pick any available Slot #1..#${match.slots}.", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-                        Text("2. Tap PLAY LUDO — no external app or Room Code needed!", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-                        Text("3. Your slot automatically opens your paired 15×15 live Ludo board inside Firebattle against the opposite slot.", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                        Text("1. Players can join slots anytime before match time (${match.matchTime}) — you do NOT need to join at the same time.", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                        Text("2. At match time, whoever taps PLAY LUDO first opens & reserves Board #1..#$totalBoards.", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                        Text("3. As soon as the opponent taps PLAY LUDO (even minutes later), the board starts live automatically and alerts the host!", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
                         Text("4. Finish the match on the in-app board; the board winner is automatically recorded for Admin prize payout.", style = MaterialTheme.typography.bodySmall, color = BlazeOrange, fontWeight = FontWeight.SemiBold)
                     } else {
                         Text("1. Join match in Firebattle and choose your Slot # (e.g. Slot #1) with your exact ${match.game} In-Game Name.", style = MaterialTheme.typography.bodySmall, color = TextSecondary)

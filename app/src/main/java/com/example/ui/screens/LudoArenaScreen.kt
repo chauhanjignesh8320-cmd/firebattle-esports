@@ -53,6 +53,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.model.LudoPlayMode
+import com.example.data.model.LudoRoom
 import com.example.data.model.LudoRoomStatus
 import com.example.data.model.MatchRegistration
 import com.example.data.model.TeamFormat
@@ -84,11 +85,14 @@ fun LudoArenaScreen(
     completedLudoMatches: List<TournamentMatch>,
     joinedIds: Set<String>,
     myRegistrations: List<MatchRegistration>,
+    activeLudoBoards: List<LudoRoom> = emptyList(),
+    ludoBoardByMatchId: Map<String, LudoRoom> = emptyMap(),
     initialFormatFilter: String = "All",
     isMatchBusy: Boolean = false,
     onRequestJoinMatch: (TournamentMatch) -> Unit,
     onInspectMatch: (TournamentMatch) -> Unit,
     onPlayLudoMatch: (TournamentMatch, MatchRegistration) -> Unit,
+    onOpenLudoBoard: (LudoRoom) -> Unit = { room -> ludoViewModel.openOnlineRoom(room.id) },
     onBackToHome: () -> Unit,
     onOpenWallet: () -> Unit,
     onCopyFeedback: (String) -> Unit,
@@ -423,10 +427,13 @@ fun LudoArenaScreen(
             )
 
             else -> LudoSlotsTournamentFeed(
+                currentUserId = profile.userId,
                 liveLudoMatches = liveLudoMatches,
                 completedLudoMatches = completedLudoMatches,
                 joinedIds = joinedIds,
                 myRegByMatch = myRegByMatch,
+                activeLudoBoards = activeLudoBoards,
+                ludoBoardByMatchId = ludoBoardByMatchId,
                 feedFilter = feedFilter,
                 formatFilter = formatFilter,
                 isMatchBusy = isMatchBusy || isBusy,
@@ -435,6 +442,7 @@ fun LudoArenaScreen(
                 onJoinMatchClick = onRequestJoinMatch,
                 onViewMoreMatchClick = onInspectMatch,
                 onPlayLudoMatch = onPlayLudoMatch,
+                onOpenLudoBoard = onOpenLudoBoard,
                 onOpenBoardHub = { showBoardHub = true }
             )
         }
@@ -443,10 +451,13 @@ fun LudoArenaScreen(
 
 @Composable
 private fun LudoSlotsTournamentFeed(
+    currentUserId: String,
     liveLudoMatches: List<TournamentMatch>,
     completedLudoMatches: List<TournamentMatch>,
     joinedIds: Set<String>,
     myRegByMatch: Map<String, MatchRegistration>,
+    activeLudoBoards: List<LudoRoom>,
+    ludoBoardByMatchId: Map<String, LudoRoom>,
     feedFilter: String,
     formatFilter: String,
     isMatchBusy: Boolean,
@@ -455,6 +466,7 @@ private fun LudoSlotsTournamentFeed(
     onJoinMatchClick: (TournamentMatch) -> Unit,
     onViewMoreMatchClick: (TournamentMatch) -> Unit,
     onPlayLudoMatch: (TournamentMatch, MatchRegistration) -> Unit,
+    onOpenLudoBoard: (LudoRoom) -> Unit,
     onOpenBoardHub: () -> Unit
 ) {
     val activeSource = if (feedFilter == "Results") completedLudoMatches else liveLudoMatches

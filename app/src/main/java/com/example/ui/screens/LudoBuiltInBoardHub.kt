@@ -363,7 +363,7 @@ fun LudoBuiltInBoardHub(
             }
             is UiState.Error -> item { ErrorBannerCard(waitingRoomsState.message) }
             is UiState.Success -> {
-                val tables = waitingRoomsState.data
+                val tables = waitingRoomsState.data.filter { !it.isTournamentBoard }
                 if (tables.isEmpty()) {
                     item {
                         EmptyArenaState(
@@ -445,14 +445,18 @@ private fun LudoRoomCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = room.roomCode,
+                        text = if (room.isTournamentBoard) "BOARD #${room.boardNumber}" else room.roomCode,
                         style = MaterialTheme.typography.labelLarge,
                         fontFamily = JetBrainsMonoFamily,
                         color = CoinGold,
                         fontWeight = FontWeight.ExtraBold
                     )
                     Text(
-                        text = if (room.entry > 0L) "Entry ₹${room.entry} • Win ₹${room.prizePool}" else "Free Match",
+                        text = when {
+                            room.isTournamentBoard -> "Tournament Match"
+                            room.entry > 0L -> "Entry ₹${room.entry} • Win ₹${room.prizePool}"
+                            else -> "Free Match"
+                        },
                         style = MaterialTheme.typography.titleSmall,
                         color = TextPrimary,
                         fontWeight = FontWeight.Bold
@@ -478,13 +482,15 @@ private fun LudoRoomCard(
                 LudoRoomStatus.WAITING -> {
                     if (isMine) {
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            OutlinedButton(
-                                enabled = !isBusy,
-                                onClick = onCancel,
-                                border = BorderStroke(1.dp, Color(0xFFEF4444)),
-                                modifier = Modifier.heightIn(min = 44.dp)
-                            ) {
-                                Text("Cancel", color = Color(0xFFEF4444), fontWeight = FontWeight.Bold)
+                            if (!room.isTournamentBoard) {
+                                OutlinedButton(
+                                    enabled = !isBusy,
+                                    onClick = onCancel,
+                                    border = BorderStroke(1.dp, Color(0xFFEF4444)),
+                                    modifier = Modifier.heightIn(min = 44.dp)
+                                ) {
+                                    Text("Cancel", color = Color(0xFFEF4444), fontWeight = FontWeight.Bold)
+                                }
                             }
                             Button(
                                 onClick = onOpen,

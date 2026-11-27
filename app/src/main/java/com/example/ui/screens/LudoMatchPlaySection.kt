@@ -18,11 +18,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -41,6 +43,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
@@ -50,6 +53,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.data.model.LudoRoom
+import com.example.data.model.LudoRoomStatus
 import com.example.ludo.LudoBoardCanvas
 import com.example.ludo.LudoDiceControl
 import com.example.ludo.LudoEngine
@@ -59,6 +63,7 @@ import com.example.ui.theme.ArenaSlateDark
 import com.example.ui.theme.ArenaWhiteCard
 import com.example.ui.theme.BlazeOrange
 import com.example.ui.theme.CoinGold
+import com.example.ui.theme.ContestPurple
 import com.example.ui.theme.CrimsonReject
 import com.example.ui.theme.EmeraldWin
 import com.example.ui.theme.EmeraldWinContainer
@@ -144,7 +149,7 @@ fun LudoOnlineWaitingRoomCard(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            text = "You are seated on Board #${room.boardNumber} (${room.hostIgn}). As soon as your paired slot opponent taps PLAY LUDO, this board starts live automatically!",
+                            text = "You are seated on Board #${room.boardNumber} (${room.hostIgn}). Both players do NOT need to press Play at the exact same second — you can even tap Back below and browse the app. Whenever your opponent taps PLAY LUDO, this board starts live automatically!",
                             style = MaterialTheme.typography.bodySmall,
                             color = TextPrimary,
                             textAlign = TextAlign.Center,
@@ -618,3 +623,110 @@ private fun LudoPlayerHudBar(
         }
     }
 }
+
+@Composable
+fun ActiveLudoBoardsBanner(
+    boards: List<LudoRoom>,
+    currentUserId: String,
+    onOpenBoard: (LudoRoom) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (boards.isEmpty()) return
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        boards.take(3).forEach { room ->
+            val status = LudoRoomStatus.fromRaw(room.status)
+            val isHost = room.hostUid == currentUserId
+            val isParticipant = isHost || room.guestUid == currentUserId
+            val mySlot = if (isHost) 0 else 1
+            val isMyTurn = status == LudoRoomStatus.PLAYING && isParticipant && room.turnSlot.toInt() == mySlot
+            val opponentWaitingForMe = status == LudoRoomStatus.WAITING && !isParticipant && room.isTournamentBoard
+            val boardLabel = if (room.isTournamentBoard) "Board #${room.boardNumber}" else "Table ${room.roomCode}"
+            val oppIgn = if (isHost) room.guestIgn else room.hostIgn
+
+            val headline = when {
+                opponentWaitingForMe -> "${room.hostIgn.ifBlank { "Opponent" }} is waiting on $boardLabel!"
+                status == LudoRoomStatus.PLAYING && isMyTurn -> "$boardLabel LIVE • YOUR TURN!"
+                status == LudoRoomStatus.PLAYING -> "$boardLabel LIVE • vs ${oppIgn.ifBlank { "Opponent" }}"
+                else -> "$boardLabel Reserved • Waiting for opponent"
+            }
+            val subline = when {
+                opponentWaitingForMe -> "Tap Join Board now to start the match."
+                status == LudoRoomStatus.PLAYING && isMyTurn -> "Opponent joined — tap Resume to roll your dice!"
+                status == LudoRoomStatus.PLAYING -> "Waiting for ${oppIgn.ifBlank { "opponent" }}'s move — tap Resume to watch."
+                else -> "You can browse safely; you'll be alerted when opponent joins."
+            }
+            val btnLabel = when {
+                opponentWaitingForMe -> "JOIN BOARD"
+                status == LudoRoomStatus.PLAYING -> "RESUME"
+                else -> "OPEN"
+            }
+            val accentColor = when {
+                opponentWaitingForMe || isMyTurn -> EmeraldWin
+                status == LudoRoomStatus.PLAYING -> CoinGold
+                else -> BlazeOrange
+            }
+
+            Surface(
+                color = if (opponentWaitingForMe || isMyTurn) EmeraldWinContainer else ArenaSlateDark,
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.5.dp, accentColor),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .clickable { onOpenBoard(room) }
+                    .testTag("active_ludo_banner_${room.id}")
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        imageVector = if (opponentWaitingForMe || isMyTurn) Icons.Filled.NotificationsActive else Icons.Filled.Casino,
+                        contentDescription = null,
+                        tint = accentColor,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = headline,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = accentColor,
+                            fontWeight = FontWeight.ExtraBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = subline,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextPrimary,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Button(
+                        onClick = { onOpenBoard(room) },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = accentColor,
+                            contentColor = if (accentColor == BlazeOrange) ArenaWhiteCard else ArenaObsidian
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.heightIn(min = 40.dp)
+                    ) {
+                        Text(btnLabel, fontWeight = FontWeight.ExtraBold, maxLines = 1)
+                    }
+                }
+            }
+        }
+    }
+}
+
