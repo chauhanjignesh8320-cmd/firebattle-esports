@@ -64,7 +64,9 @@ import com.example.ludo.LudoEngine
 import com.example.ui.components.EmptyArenaState
 import com.example.ui.components.ErrorBannerCard
 import com.example.ui.components.hasInternetConnection
+import com.example.ui.theme.ArenaHeaderNavy
 import com.example.ui.theme.ArenaObsidian
+import com.example.ui.theme.ArenaPurpleDeep
 import com.example.ui.theme.ArenaSlateBorder
 import com.example.ui.theme.ArenaSlateDark
 import com.example.ui.theme.ArenaWhiteCard
@@ -138,7 +140,7 @@ fun LudoArenaScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(ArenaSlateDark)
+                .background(ArenaHeaderNavy)
                 .padding(horizontal = 8.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
@@ -481,7 +483,11 @@ private fun LudoSlotsTournamentFeed(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(ContestPurple)
+    ) {
         // Purple 3-Tab Strip matching FF/BGMI Tournament Feed
         Row(
             modifier = Modifier
@@ -518,7 +524,7 @@ private fun LudoSlotsTournamentFeed(
         LazyRow(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(ArenaSlateDark)
+                .background(ArenaPurpleDeep)
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -542,8 +548,8 @@ private fun LudoSlotsTournamentFeed(
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = BlazeOrange,
                         selectedLabelColor = ArenaWhiteCard,
-                        containerColor = ArenaObsidian,
-                        labelColor = TextSecondary
+                        containerColor = Color.White.copy(alpha = 0.14f),
+                        labelColor = Color.White
                     ),
                     modifier = Modifier.testTag("ludo_format_chip_$fmt")
                 )
@@ -551,7 +557,9 @@ private fun LudoSlotsTournamentFeed(
         }
 
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .background(ContestPurple),
             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
@@ -564,7 +572,8 @@ private fun LudoSlotsTournamentFeed(
                             feedFilter == "Results" -> "No Ludo Results Yet"
                             else -> "No Ludo Slots Open Yet"
                         },
-                        subtitle = "Admin can publish Ludo 1vs1, 2vs2, 3vs3 & 4vs4 slot matches from Admin Panel — join a slot and play directly inside our app!"
+                        subtitle = "Admin can publish Ludo 1vs1, 2vs2, 3vs3 & 4vs4 slot matches from Admin Panel — join a slot and play directly inside our app!",
+                        useLightCard = true
                     )
                 }
             } else {
@@ -573,6 +582,8 @@ private fun LudoSlotsTournamentFeed(
                         match = match,
                         alreadyJoined = match.id in joinedIds,
                         myRegistration = myRegByMatch[match.id],
+                        ludoBoardRoom = ludoBoardByMatchId[match.id],
+                        currentUserId = currentUserId,
                         isBusy = isMatchBusy,
                         onJoinClick = { onJoinMatchClick(match) },
                         onViewMoreClick = { onViewMoreMatchClick(match) },

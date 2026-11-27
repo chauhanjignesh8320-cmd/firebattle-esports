@@ -53,6 +53,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -123,6 +125,7 @@ import com.example.ui.components.hasInternetConnection
 import com.example.ui.components.hasNotificationPermission
 import com.example.ui.components.notifyLudoBoardReady
 import com.example.ui.components.notifyRoomCredentialsReady
+import com.example.ui.theme.ArenaHeaderNavy
 import com.example.ui.theme.ArenaInkDark
 import com.example.ui.theme.ArenaInkMuted
 import com.example.ui.theme.ArenaLightBorder
@@ -138,6 +141,8 @@ import com.example.ui.theme.ContestPurple
 import com.example.ui.theme.EmeraldWin
 import com.example.ui.theme.EmeraldWinContainer
 import com.example.ui.theme.JetBrainsMonoFamily
+import com.example.ui.theme.MatchFullRed
+import com.example.ui.theme.MatchFullSlate
 import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
@@ -396,14 +401,14 @@ fun PlayerDashboardScreen(
         BoxWithConstraints(
             modifier = modifier
                 .fillMaxSize()
-                .background(ArenaObsidian)
+                .background(ArenaHeaderNavy)
         ) {
         val useRail = maxWidth >= 600.dp
 
         if (useRail) {
             Row(modifier = Modifier.fillMaxSize()) {
                 NavigationRail(
-                    containerColor = ArenaSlateDark,
+                    containerColor = ArenaHeaderNavy,
                     modifier = Modifier.fillMaxHeight()
                 ) {
                     Spacer(modifier = Modifier.height(12.dp))
@@ -471,11 +476,11 @@ fun PlayerDashboardScreen(
             }
         } else {
             Scaffold(
-                containerColor = ArenaObsidian,
+                containerColor = ArenaHeaderNavy,
                 contentWindowInsets = WindowInsets(0, 0, 0, 0),
                 bottomBar = {
                     NavigationBar(
-                        containerColor = ArenaSlateDark,
+                        containerColor = ArenaHeaderNavy,
                         windowInsets = WindowInsets.navigationBars
                     ) {
                         PlayerTab.entries.forEach { tab ->
@@ -959,13 +964,13 @@ private fun TournamentsSection(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(ArenaObsidian)
+            .background(ContestPurple)
     ) {
-        // Simple Top Header: Back Arrow + Title only
+        // Dark Navy Top Header: Back Arrow + Title
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(ArenaObsidian)
+                .background(ArenaHeaderNavy)
                 .padding(horizontal = 6.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -978,13 +983,13 @@ private fun TournamentsSection(
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Back to Home",
-                    tint = TextPrimary
+                    tint = Color.White
                 )
             }
             Text(
                 text = activeCategoryTitle.uppercase(),
                 style = MaterialTheme.typography.titleMedium,
-                color = TextPrimary,
+                color = Color.White,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -1030,77 +1035,115 @@ private fun TournamentsSection(
             }
         }
 
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .background(ContestPurple)
         ) {
-            when (activeFeedState) {
-                is UiState.Loading -> item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(32.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator(color = ContestPurple)
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 84.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                when (activeFeedState) {
+                    is UiState.Loading -> item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(color = Color.White)
+                        }
                     }
-                }
 
-                is UiState.Error -> item {
-                    ErrorBannerCard(message = activeFeedState.message)
-                }
-
-                is UiState.Success -> {
-                    val categoryFiltered = activeFeedState.data.filter { match ->
-                        val isLudoMatch = match.game == GameTitle.LUDO.label
-                        val mode = MatchMode.fromRaw(match.matchMode).label
-                        val format = TeamFormat.fromRaw(match.teamFormat).label
-                        (!isLudoMatch || (feedFilter == "Ongoing" && onlyJoinedFilter)) &&
-                            (gameFilter == "All" || match.game == gameFilter) &&
-                            (modeFilter == "All" || mode == modeFilter) &&
-                            (formatFilter == "All" || format == formatFilter)
+                    is UiState.Error -> item {
+                        ErrorBannerCard(message = activeFeedState.message)
                     }
-                    val filtered = when (feedFilter) {
-                        "Ongoing" -> categoryFiltered.filter { match ->
-                            if (onlyJoinedFilter) {
-                                match.id in joinedIds
-                            } else {
-                                match.id in joinedIds || match.roomId.isNotBlank()
+
+                    is UiState.Success -> {
+                        val categoryFiltered = activeFeedState.data.filter { match ->
+                            val isLudoMatch = match.game == GameTitle.LUDO.label
+                            val mode = MatchMode.fromRaw(match.matchMode).label
+                            val format = TeamFormat.fromRaw(match.teamFormat).label
+                            (!isLudoMatch || (feedFilter == "Ongoing" && onlyJoinedFilter)) &&
+                                (gameFilter == "All" || match.game == gameFilter) &&
+                                (modeFilter == "All" || mode == modeFilter) &&
+                                (formatFilter == "All" || format == formatFilter)
+                        }
+                        val filtered = when (feedFilter) {
+                            "Ongoing" -> categoryFiltered.filter { match ->
+                                if (onlyJoinedFilter) {
+                                    match.id in joinedIds
+                                } else {
+                                    match.id in joinedIds || match.roomId.isNotBlank()
+                                }
+                            }
+                            else -> categoryFiltered
+                        }
+
+                        if (filtered.isEmpty()) {
+                            item {
+                                EmptyArenaState(
+                                    title = when (feedFilter) {
+                                        "Ongoing" -> "No Ongoing Matches"
+                                        "Results" -> "No Match Results Yet"
+                                        else -> "No Matches Available"
+                                    },
+                                    subtitle = when (feedFilter) {
+                                        "Ongoing" -> "Joined matches or active rooms with Room ID appear here."
+                                        "Results" -> "Completed match winners and payouts appear here."
+                                        else -> "New tournaments in this category will appear here soon."
+                                    },
+                                    useLightCard = true
+                                )
+                            }
+                        } else {
+                            items(filtered, key = { it.id }) { match ->
+                                TournamentMatchCard(
+                                    match = match,
+                                    alreadyJoined = match.id in joinedIds,
+                                    myRegistration = myRegByMatch[match.id],
+                                    ludoBoardRoom = ludoBoardByMatchId[match.id],
+                                    currentUserId = profile.userId,
+                                    isBusy = isBusy,
+                                    onJoinClick = { onRequestJoin(match) },
+                                    onViewMoreClick = { onInspectMatch(match) },
+                                    onPlayLudoClick = { reg -> onPlayLudoMatch(match, reg) }
+                                )
                             }
                         }
-                        else -> categoryFiltered
                     }
+                }
+            }
 
-                    if (filtered.isEmpty()) {
-                        item {
-                            EmptyArenaState(
-                                title = when (feedFilter) {
-                                    "Ongoing" -> "No Ongoing Matches"
-                                    "Results" -> "No Match Results Yet"
-                                    else -> "No Matches Available"
-                                },
-                                subtitle = when (feedFilter) {
-                                    "Ongoing" -> "Joined matches or active rooms with Room ID appear here."
-                                    "Results" -> "Completed match winners and payouts appear here."
-                                    else -> "New tournaments in this category will appear here soon."
-                                }
-                            )
-                        }
-                    } else {
-                        items(filtered, key = { it.id }) { match ->
-                            TournamentMatchCard(
-                                match = match,
-                                alreadyJoined = match.id in joinedIds,
-                                myRegistration = myRegByMatch[match.id],
-                                ludoBoardRoom = ludoBoardByMatchId[match.id],
-                                currentUserId = profile.userId,
-                                isBusy = isBusy,
-                                onJoinClick = { onRequestJoin(match) },
-                                onViewMoreClick = { onInspectMatch(match) },
-                                onPlayLudoClick = { reg -> onPlayLudoMatch(match, reg) }
-                            )
-                        }
+            FloatingActionButton(
+                onClick = {
+                    feedFilter = if (feedFilter == "Results") "Upcoming" else "Results"
+                },
+                containerColor = ContestPurple,
+                contentColor = Color.White,
+                shape = CircleShape,
+                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 8.dp),
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(16.dp)
+                    .testTag("arena_results_fab")
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    color = ContestPurple,
+                    border = BorderStroke(1.5.dp, Color.White.copy(alpha = 0.45f)),
+                    modifier = Modifier.size(56.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Filled.EmojiEvents,
+                            contentDescription = "Winners & Results",
+                            tint = Color.White,
+                            modifier = Modifier.size(26.dp)
+                        )
                     }
                 }
             }
@@ -1132,7 +1175,7 @@ internal fun TournamentMatchCard(
     Surface(
         color = ArenaWhiteCard,
         shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.5.dp, ContestPurple),
+        shadowElevation = 6.dp,
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
@@ -1301,9 +1344,10 @@ internal fun TournamentMatchCard(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                text = if (isFull) "Room Full" else "Only $slotsRemaining spots left",
+                                text = if (isFull) "No Spots Left! Match is Full." else "Only $slotsRemaining spots left",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = ArenaInkMuted
+                                color = if (isFull) MatchFullRed else ArenaInkMuted,
+                                fontWeight = if (isFull) FontWeight.SemiBold else FontWeight.Normal
                             )
                             Text(
                                 text = "${match.joinedCount}/${match.slots}",
@@ -1342,14 +1386,14 @@ internal fun TournamentMatchCard(
                         alreadyJoined && myRegistration != null && myRegistration.slotNumber > 0L ->
                             "SLOT #${myRegistration.slotNumber}"
                         alreadyJoined -> "JOINED"
-                        isFull -> "FULL"
+                        isFull -> "MATCH FULL"
                         else -> "JOIN"
                     }
                     val actionColor = when {
                         canPlayInAppLudo && (oppWaitingOnBoard || isMyLudoTurn) -> EmeraldWin
                         canPlayInAppLudo -> BlazeOrange
                         alreadyJoined -> EmeraldWin
-                        isCompleted || isFull -> ArenaInkMuted
+                        isCompleted || isFull -> MatchFullSlate
                         else -> ContestPurple
                     }
 
@@ -1375,15 +1419,53 @@ internal fun TournamentMatchCard(
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
+                    } else if (isFull && !alreadyJoined && !isCompleted) {
+                        Button(
+                            onClick = onViewMoreClick,
+                            enabled = !isBusy,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MatchFullSlate,
+                                contentColor = ArenaWhiteCard
+                            ),
+                            shape = RoundedCornerShape(6.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                            modifier = Modifier
+                                .widthIn(min = 108.dp)
+                                .heightIn(min = 40.dp)
+                                .testTag("join_match_button_${match.id}")
+                        ) {
+                            Text(
+                                text = actionLabel,
+                                fontWeight = FontWeight.ExtraBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    } else if (!alreadyJoined && !isCompleted) {
+                        Button(
+                            onClick = onJoinClick,
+                            enabled = !isBusy,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = ContestPurple,
+                                contentColor = ArenaWhiteCard
+                            ),
+                            shape = RoundedCornerShape(6.dp),
+                            contentPadding = PaddingValues(horizontal = 18.dp, vertical = 6.dp),
+                            modifier = Modifier
+                                .widthIn(min = 104.dp)
+                                .heightIn(min = 40.dp)
+                                .testTag("join_match_button_${match.id}")
+                        ) {
+                            Text(
+                                text = actionLabel,
+                                fontWeight = FontWeight.ExtraBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     } else {
                         OutlinedButton(
-                            onClick = {
-                                if (alreadyJoined || isCompleted || isFull) {
-                                    onViewMoreClick()
-                                } else {
-                                    onJoinClick()
-                                }
-                            },
+                            onClick = onViewMoreClick,
                             enabled = !isBusy,
                             border = BorderStroke(1.2.dp, actionColor),
                             shape = RoundedCornerShape(6.dp),

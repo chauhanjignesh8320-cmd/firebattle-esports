@@ -64,9 +64,15 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import com.example.ui.theme.ArenaHeaderNavy
 import com.example.ui.theme.ArenaInkDark
+import com.example.ui.theme.ArenaInkMuted
+import com.example.ui.theme.ArenaLightBorder
+import com.example.ui.theme.ArenaLightSurface
+import com.example.ui.theme.ArenaWhiteCard
 import com.example.ui.theme.CoinGold
 import com.example.ui.theme.CoinPillBg
+import com.example.ui.theme.ContestPurple
 
 @Composable
 fun FirebattleTopBar(
@@ -81,7 +87,7 @@ fun FirebattleTopBar(
     onAlertsClick: () -> Unit = {}
 ) {
     Surface(
-        color = ArenaSlateDark.copy(alpha = 0.98f),
+        color = ArenaHeaderNavy,
         border = BorderStroke(0.5.dp, ArenaSlateBorder),
         modifier = modifier.fillMaxWidth()
     ) {
@@ -406,12 +412,14 @@ fun EmptyArenaState(
     title: String,
     subtitle: String,
     icon: ImageVector = Icons.Outlined.SportsEsports,
+    useLightCard: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Surface(
-        color = ArenaSlateDark,
+        color = if (useLightCard) ArenaWhiteCard else ArenaSlateDark,
         shape = RoundedCornerShape(18.dp),
-        border = BorderStroke(1.dp, ArenaSlateBorder),
+        border = BorderStroke(1.dp, if (useLightCard) ArenaLightBorder else ArenaSlateBorder),
+        shadowElevation = if (useLightCard) 6.dp else 0.dp,
         modifier = modifier.fillMaxWidth()
     ) {
         Column(
@@ -424,13 +432,13 @@ fun EmptyArenaState(
                 modifier = Modifier
                     .size(52.dp)
                     .clip(CircleShape)
-                    .background(ArenaSlateSurface),
+                    .background(if (useLightCard) ContestPurple.copy(alpha = 0.12f) else ArenaSlateSurface),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = BlazeOrange,
+                    tint = if (useLightCard) ContestPurple else BlazeOrange,
                     modifier = Modifier.size(28.dp)
                 )
             }
@@ -438,14 +446,15 @@ fun EmptyArenaState(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
-                color = TextPrimary,
+                color = if (useLightCard) ArenaInkDark else TextPrimary,
+                fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodyMedium,
-                color = TextSecondary,
+                color = if (useLightCard) ArenaInkMuted else TextSecondary,
                 textAlign = TextAlign.Center
             )
         }
