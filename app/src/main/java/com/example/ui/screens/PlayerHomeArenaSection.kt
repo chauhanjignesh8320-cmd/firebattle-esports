@@ -836,11 +836,12 @@ private fun EsportGameGridCard(
     modifier: Modifier = Modifier
 ) {
     Surface(
-        color = ArenaSlateDark,
-        shape = RoundedCornerShape(8.dp),
-        border = BorderStroke(1.dp, ArenaSlateBorder),
+        color = ArenaWhiteCard,
+        shape = RoundedCornerShape(10.dp),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.9f)),
+        shadowElevation = 5.dp,
         modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(10.dp))
             .clickable(onClick = onClick)
             .testTag("game_tile_${tile.id}")
     ) {
@@ -857,7 +858,7 @@ private fun EsportGameGridCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(BlazeOrange)
-                    .padding(horizontal = 4.dp, vertical = 6.dp),
+                    .padding(horizontal = 4.dp, vertical = 7.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
