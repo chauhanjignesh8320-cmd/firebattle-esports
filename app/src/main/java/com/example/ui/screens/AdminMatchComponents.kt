@@ -881,32 +881,29 @@ fun AdminMatchCard(
                             ) {
                                 Column(
                                     modifier = Modifier.weight(1f),
-                                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    Surface(
+                                        color = BlazeOrangeContainer,
+                                        shape = RoundedCornerShape(6.dp),
+                                        border = BorderStroke(1.dp, BlazeOrange.copy(alpha = 0.5f))
                                     ) {
-                                        Surface(
-                                            color = BlazeOrangeContainer,
-                                            shape = RoundedCornerShape(6.dp),
-                                            border = BorderStroke(1.dp, BlazeOrange.copy(alpha = 0.5f))
-                                        ) {
-                                            Text(
-                                                text = slotPrefix,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = BlazeOrange,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                            )
-                                        }
                                         Text(
-                                            text = reg.ign,
-                                            style = MaterialTheme.typography.labelLarge,
-                                            color = TextPrimary,
-                                            fontWeight = FontWeight.Bold
+                                            text = slotPrefix,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = BlazeOrange,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                         )
                                     }
+                                    Text(
+                                        text = reg.ign,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = TextPrimary,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                     Text(
                                         text = "Game UID: ${reg.gameUid} • +91 ${reg.phone}",
                                         style = MaterialTheme.typography.bodySmall,
